@@ -41,4 +41,4 @@ If you already ran `supabase/schema.sql`, run the updated file again in the Supa
 
 ## Loan and payment calculations
 
-Interest and balances are estimates: interest accrues daily at the entered annual rate on outstanding principal, with recorded payments applied to accrued interest before principal. Due-date reminders appear in the dashboard; the prototype does not send email or push reminders. This is not financial advice.
+Interest and balances are estimates: interest accrues daily at the entered annual rate on outstanding principal, with each recorded payment applied to accrued interest first and any remainder reducing principal. Loan balances and payment history show principal and interest separately for members and administrators, so interest after a principal reduction is calculated on the reduced balance. Due-date reminders appear in the dashboard; the prototype does not send email or push reminders. This is not financial advice.

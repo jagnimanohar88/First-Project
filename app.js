@@ -169,6 +169,7 @@ function loanState(loan, asOf = new Date().toISOString().slice(0, 10)) {
   let accruedInterest = 0;
   let paidInterest = 0;
   let cursor = loan.start_date;
+  const paymentBreakdown = [];
   const payments = state.payments
     .filter((payment) => payment.loan_id === loan.id && payment.payment_date >= loan.start_date && payment.payment_date <= asOf)
     .sort((a, b) => a.payment_date.localeCompare(b.payment_date));
@@ -179,10 +180,18 @@ function loanState(loan, asOf = new Date().toISOString().slice(0, 10)) {
     const interestPayment = Math.min(accruedInterest, Number(payment.amount));
     accruedInterest -= interestPayment;
     paidInterest += interestPayment;
-    principal -= Math.min(principal, Number(payment.amount) - interestPayment);
+    const principalPayment = Math.min(principal, Number(payment.amount) - interestPayment);
+    principal -= principalPayment;
+    paymentBreakdown.push({ id: payment.id, interest: interestPayment, principal: principalPayment });
   }
   accruedInterest += principal * (Number(loan.annual_rate) / 100) * daysBetween(cursor, asOf) / 365;
-  return { principal: Math.max(0, principal), accruedInterest: Math.max(0, accruedInterest), paidInterest, balance: Math.max(0, principal + accruedInterest) };
+  return {
+    principal: Math.max(0, principal),
+    accruedInterest: Math.max(0, accruedInterest),
+    paidInterest,
+    paymentBreakdown,
+    balance: Math.max(0, principal + accruedInterest)
+  };
 }
 
 function statusFor(loan) {
@@ -300,7 +309,7 @@ function renderLoans() {
     const dueDateAction = state.profile.role === "admin"
       ? `<button class="small-action" data-action="edit-due" data-id="${loan.id}">Update due date</button>`
       : "";
-    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span><span>${fullCurrency.format(loan.monthly_payment)} / month</span></div>${loan.term_months ? `<div class="loan-card-meta"><span>${loan.term_months} month repayment term</span></div>` : ""}<div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">Record payment</button></div></article>`;
+    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>Principal remaining: ${fullCurrency.format(result.principal)}</span><span>Interest due: ${fullCurrency.format(result.accruedInterest)}</span></div><div class="loan-card-meta"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(loan.monthly_payment)} / month</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span>${loan.term_months ? `<span>${loan.term_months} month repayment term</span>` : ""}</div><div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">Record payment</button></div></article>`;
   }).join("") : emptyState("◫", "No loans to show yet.", state.profile.role === "admin"
     ? "Add your first loan to keep the balance and due date in one place."
     : "Apply for a loan to start tracking your balance and due dates.");
@@ -335,7 +344,10 @@ function renderMemberLoans() {
       const lastPayment = payments[0];
       const status = statusFor(loan);
       const term = loan.term_months ? `<span>${loan.term_months} month repayment term</span>` : "";
-      return `<article class="member-loan-card"><div class="member-loan-heading"><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="member-loan-balance">${fullCurrency.format(result.balance)} <span>remaining</span></div><div class="member-loan-details"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued interest</span><span>${fullCurrency.format(loan.monthly_payment)} monthly due</span><span>Due ${dateLabel(loan.due_date)}</span>${term}</div><div class="member-loan-payment"><span>Total repayments: <strong>${fullCurrency.format(totalPaid(loan.id))}</strong></span><span>${lastPayment ? `Last paid ${dateLabel(lastPayment.payment_date)} · ${fullCurrency.format(lastPayment.amount)}` : "No payments recorded"}</span></div></article>`;
+      const lastPaymentBreakdown = lastPayment
+        ? result.paymentBreakdown.find((item) => item.id === lastPayment.id)
+        : null;
+      return `<article class="member-loan-card"><div class="member-loan-heading"><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="member-loan-balance">${fullCurrency.format(result.balance)} <span>remaining</span></div><div class="member-loan-details"><span>Principal remaining: ${fullCurrency.format(result.principal)}</span><span>Interest due: ${fullCurrency.format(result.accruedInterest)}</span><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(loan.monthly_payment)} monthly due</span><span>Due ${dateLabel(loan.due_date)}</span>${term}</div><div class="member-loan-payment"><span>Total repayments: <strong>${fullCurrency.format(totalPaid(loan.id))}</strong></span><span>${lastPayment ? `Last paid ${dateLabel(lastPayment.payment_date)} · ${fullCurrency.format(lastPayment.amount)} (interest ${fullCurrency.format(lastPaymentBreakdown?.interest || 0)}, principal ${fullCurrency.format(lastPaymentBreakdown?.principal || 0)})` : "No payments recorded"}</span></div></article>`;
     }).join("") : emptyState("✓", "No active loans.", "This member currently has no loans with an outstanding balance.");
 
     return `<section class="member-loan-group"><div class="member-group-heading"><div class="avatar">${initials(member.full_name)}</div><div><strong>${escapeHtml(member.full_name)}</strong><span>${escapeHtml(member.email)}</span></div><span class="member-loan-total">${loans.length} active</span></div><div class="member-loan-cards">${loanCards}</div></section>`;
@@ -344,12 +356,22 @@ function renderMemberLoans() {
 
 function paymentTable(payments) {
   if (!payments.length) return emptyState("↗", "No payments recorded yet.", "When you make a repayment, add it here to update your balance.");
+  const breakdownsByLoan = new Map();
   const rows = payments.map((payment) => {
     const loan = findLoan(payment.loan_id);
     const name = loan ? loan.name : "Loan removed";
-    return `<tr><td><div class="table-loan"><span class="table-mini-icon">↗</span>${escapeHtml(name)}</div></td><td>${dateLabel(payment.payment_date)}</td><td>${escapeHtml(payment.note || "Repayment")}</td><td class="payment-amount">−${fullCurrency.format(payment.amount)}</td></tr>`;
+    let breakdown = null;
+    if (loan) {
+      if (!breakdownsByLoan.has(loan.id)) {
+        breakdownsByLoan.set(loan.id, new Map(
+          loanState(loan).paymentBreakdown.map((item) => [item.id, item])
+        ));
+      }
+      breakdown = breakdownsByLoan.get(loan.id).get(payment.id) || null;
+    }
+    return `<tr><td><div class="table-loan"><span class="table-mini-icon">↗</span>${escapeHtml(name)}</div></td><td>${dateLabel(payment.payment_date)}</td><td>${escapeHtml(payment.note || "Repayment")}</td><td>${fullCurrency.format(breakdown?.interest || 0)}</td><td>${fullCurrency.format(breakdown?.principal || 0)}</td><td class="payment-amount">−${fullCurrency.format(payment.amount)}</td></tr>`;
   }).join("");
-  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>LOAN</th><th>DATE</th><th>NOTE</th><th>AMOUNT</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="data-table"><thead><tr><th>LOAN</th><th>DATE</th><th>NOTE</th><th>INTEREST PAID</th><th>PRINCIPAL PAID</th><th>AMOUNT</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function renderPayments() {
