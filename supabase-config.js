@@ -1,4 +1,4 @@
 window.LOANLEDGER_SUPABASE_CONFIG = {
-  url: "YOUR_SUPABASE_PROJECT_URL",
-  anonKey: "YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY"
+  url: "https://mcwicwhhluwsqefywmkg.supabase.co/rest/v1/",
+  anonKey: "sb_publishable_MErJzbwDovlQutv_ydwGlg_XOkLVfoQ"
 };
