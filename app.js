@@ -5,8 +5,8 @@ const configured = Boolean(config?.url && config?.anonKey &&
   !config.url.includes("YOUR_SUPABASE") && !config.anonKey.includes("YOUR_SUPABASE"));
 const supabase = configured ? createClient(config.url, config.anonKey) : null;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-const fullCurrency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+const fullCurrency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 });
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
 const state = { user: null, profile: null, loans: [], payments: [], paymentRequests: [], pendingUsers: [], applications: [], approvedMembers: [] };
 let isRegistering = false;
@@ -21,12 +21,27 @@ const initials = (name) => (name || "?").trim().split(/\s+/).slice(0, 2).map((pa
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const findLoan = (id) => state.loans.find((loan) => loan.id === id);
 const iconClass = (loan) => loan.color === "amber" ? "amber" : loan.color === "blue" ? "blue" : "";
-const monthlyInterestLabel = (loan, principal) => loan.monthly_interest_amount === null || loan.monthly_interest_amount === undefined
-  ? `${Number(loan.annual_rate).toFixed(2)}% annual interest`
-  : `${fullCurrency.format(Number(loan.monthly_interest_amount) * principal / Number(loan.principal))} monthly interest`;
-const interestForDays = (loan, principal, days) => loan.monthly_interest_amount === null || loan.monthly_interest_amount === undefined
-  ? principal * (Number(loan.annual_rate) / 100) * days / 365
-  : principal * Number(loan.monthly_interest_amount) / Number(loan.principal) * 12 * days / 365;
+const hasMonthlyInterest = (loan) => loan.monthly_interest_rate !== null && loan.monthly_interest_rate !== undefined ||
+  loan.monthly_interest_amount !== null && loan.monthly_interest_amount !== undefined;
+const monthlyInterestAmountAt = (loan, principal) => loan.monthly_interest_rate !== null && loan.monthly_interest_rate !== undefined
+  ? Math.round(principal * Number(loan.monthly_interest_rate)) / 100
+  : loan.monthly_interest_amount !== null && loan.monthly_interest_amount !== undefined
+    ? Math.round(Number(loan.monthly_interest_amount) * principal / Number(loan.principal) * 100) / 100
+    : Math.round(principal * Number(loan.annual_rate) / 12) / 100;
+const monthlyInterestLabel = (loan, principal) => loan.monthly_interest_rate !== null && loan.monthly_interest_rate !== undefined
+  ? `${Number(loan.monthly_interest_rate).toFixed(2)}% monthly interest`
+  : loan.monthly_interest_amount !== null && loan.monthly_interest_amount !== undefined
+    ? `${fullCurrency.format(monthlyInterestAmountAt(loan, principal))} monthly interest`
+    : `${Number(loan.annual_rate).toFixed(2)}% annual interest`;
+const monthlyDueAmount = (loan, principal) => hasMonthlyInterest(loan)
+  ? monthlyInterestAmountAt(loan, principal)
+  : Number(loan.monthly_payment || 0);
+const monthlyDueLabel = (loan) => hasMonthlyInterest(loan) ? "Monthly interest due" : "Monthly payment";
+const interestForDays = (loan, principal, days) => loan.monthly_interest_rate !== null && loan.monthly_interest_rate !== undefined
+  ? principal * Number(loan.monthly_interest_rate) / 100 * 12 * days / 365
+  : loan.monthly_interest_amount !== null && loan.monthly_interest_amount !== undefined
+    ? principal * Number(loan.monthly_interest_amount) / Number(loan.principal) * 12 * days / 365
+    : principal * (Number(loan.annual_rate) / 100) * days / 365;
 
 function showAuthNotice(message, isError = false) {
   authNotice = message;
@@ -285,7 +300,7 @@ function renderReminder() {
   const { loan, status } = upcoming[0];
   banner.classList.remove("hidden");
   banner.classList.toggle("overdue-banner", status.className === "overdue");
-  banner.innerHTML = `<span>${status.className === "overdue" ? "!" : "◷"}</span><span><strong>${status.className === "overdue" ? "Payment overdue" : "Payment coming up"}:</strong> ${escapeHtml(loan.name)} · ${fullCurrency.format(loan.monthly_payment)} · ${status.className === "overdue" ? `was due ${dateLabel(loan.due_date)}` : `due ${status.days === 0 ? "today" : dateLabel(loan.due_date)}`}</span>`;
+  banner.innerHTML = `<span>${status.className === "overdue" ? "!" : "◷"}</span><span><strong>${status.className === "overdue" ? "Payment overdue" : "Payment coming up"}:</strong> ${escapeHtml(loan.name)} · ${monthlyDueLabel(loan)} ${fullCurrency.format(monthlyDueAmount(loan, loanState(loan).principal))} · ${status.className === "overdue" ? `was due ${dateLabel(loan.due_date)}` : `due ${status.days === 0 ? "today" : dateLabel(loan.due_date)}`}</span>`;
 }
 
 function renderOverview() {
@@ -299,7 +314,7 @@ function renderOverview() {
   document.getElementById("metric-balance").textContent = currency.format(totalBalance);
   document.getElementById("metric-interest").textContent = currency.format(interest);
   document.getElementById("metric-paid").textContent = currency.format(paid);
-  document.getElementById("metric-due").textContent = next ? currency.format(next.monthly_payment) : currency.format(0);
+  document.getElementById("metric-due").textContent = next ? currency.format(monthlyDueAmount(next, loanState(next).principal)) : currency.format(0);
   document.getElementById("metric-due-date").textContent = next ? `Due ${dateLabel(next.due_date)} · ${next.name}` : "No upcoming payments";
 
   document.getElementById("overview-loans").innerHTML = ownLoans.length ? ownLoans.slice(0, 4).map((loan) => {
@@ -314,7 +329,7 @@ function renderOverview() {
   document.getElementById("upcoming-list").innerHTML = upcoming.length ? upcoming.map((loan) => {
     const due = dayStart(loan.due_date);
     const status = statusFor(loan);
-    return `<div class="upcoming-item"><div class="date-block"><span>${due.toLocaleDateString("en-US", { month: "short" })}</span><strong>${due.getDate()}</strong></div><div class="upcoming-info"><strong>${escapeHtml(loan.name)}</strong><span class="status-pill ${status.className}">${status.label}</span></div><span class="upcoming-amount">${currency.format(loan.monthly_payment)}</span></div>`;
+    return `<div class="upcoming-item"><div class="date-block"><span>${due.toLocaleDateString("en-US", { month: "short" })}</span><strong>${due.getDate()}</strong></div><div class="upcoming-info"><strong>${escapeHtml(loan.name)}</strong><span class="status-pill ${status.className}">${status.label}</span></div><span class="upcoming-amount">${currency.format(monthlyDueAmount(loan, loanState(loan).principal))}</span></div>`;
   }).join("") : emptyState("◷", "All clear.", "Add a loan to see upcoming due dates.");
 
   const recent = ownPayments.slice().sort((a, b) => b.payment_date.localeCompare(a.payment_date)).slice(0, 4);
@@ -333,7 +348,7 @@ function renderLoans() {
       ? `<button class="small-action" data-action="edit-due" data-id="${loan.id}">Update due date</button>`
       : "";
     const paymentAction = state.profile.role === "admin" ? "Record payment" : "Request payment";
-    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>Approved amount: ${fullCurrency.format(loan.principal)}</span><span>Principal remaining: ${fullCurrency.format(result.principal)}</span></div><div class="loan-card-meta"><span>Interest due: ${fullCurrency.format(result.accruedInterest)}</span><span>${monthlyInterestLabel(loan, result.principal)}</span></div><div class="loan-card-meta"><span>${fullCurrency.format(loan.monthly_payment)} / month</span><span>Next due ${dateLabel(loan.due_date)}</span></div>${loan.term_months ? `<div class="loan-card-meta"><span>${loan.term_months} month repayment term</span></div>` : ""}<div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">${paymentAction}</button></div></article>`;
+    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>Approved amount: ${fullCurrency.format(loan.principal)}</span><span>Principal remaining: ${fullCurrency.format(result.principal)}</span></div><div class="loan-card-meta"><span>Interest due: ${fullCurrency.format(result.accruedInterest)}</span><span>${monthlyInterestLabel(loan, result.principal)}</span></div><div class="loan-card-meta"><span>${monthlyDueLabel(loan)}: ${fullCurrency.format(monthlyDueAmount(loan, result.principal))}</span><span>Next due ${dateLabel(loan.due_date)}</span></div>${loan.term_months ? `<div class="loan-card-meta"><span>${loan.term_months} month repayment term</span></div>` : ""}<div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">${paymentAction}</button></div></article>`;
   }).join("") : emptyState("◫", "No loans to show yet.", state.profile.role === "admin"
     ? "Add your first loan to keep the balance and due date in one place."
     : "Apply for a loan to start tracking your balance and due dates.");
@@ -371,7 +386,7 @@ function renderMemberLoans() {
       const lastPaymentBreakdown = lastPayment
         ? result.paymentBreakdown.find((item) => item.id === lastPayment.id)
         : null;
-      return `<article class="member-loan-card"><div class="member-loan-heading"><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="member-loan-balance">${fullCurrency.format(result.balance)} <span>remaining</span></div><div class="member-loan-details"><span>Approved amount: ${fullCurrency.format(loan.principal)}</span><span>Principal remaining: ${fullCurrency.format(result.principal)}</span><span>Interest due: ${fullCurrency.format(result.accruedInterest)}</span><span>${monthlyInterestLabel(loan, result.principal)}</span><span>${fullCurrency.format(loan.monthly_payment)} monthly due</span><span>Due ${dateLabel(loan.due_date)}</span>${term}</div><div class="member-loan-payment"><span>Total repayments: <strong>${fullCurrency.format(totalPaid(loan.id))}</strong></span><span>${lastPayment ? `Last paid ${dateLabel(lastPayment.payment_date)} · ${fullCurrency.format(lastPayment.amount)} (interest ${fullCurrency.format(lastPaymentBreakdown?.interest || 0)}, principal ${fullCurrency.format(lastPaymentBreakdown?.principal || 0)})` : "No payments recorded"}</span></div></article>`;
+      return `<article class="member-loan-card"><div class="member-loan-heading"><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="member-loan-balance">${fullCurrency.format(result.balance)} <span>remaining</span></div><div class="member-loan-details"><span>Approved amount: ${fullCurrency.format(loan.principal)}</span><span>Principal remaining: ${fullCurrency.format(result.principal)}</span><span>Interest due: ${fullCurrency.format(result.accruedInterest)}</span><span>${monthlyInterestLabel(loan, result.principal)}</span><span>${monthlyDueLabel(loan)}: ${fullCurrency.format(monthlyDueAmount(loan, result.principal))}</span><span>Due ${dateLabel(loan.due_date)}</span>${term}</div><div class="member-loan-payment"><span>Total repayments: <strong>${fullCurrency.format(totalPaid(loan.id))}</strong></span><span>${lastPayment ? `Last paid ${dateLabel(lastPayment.payment_date)} · ${fullCurrency.format(lastPayment.amount)} (interest ${fullCurrency.format(lastPaymentBreakdown?.interest || 0)}, principal ${fullCurrency.format(lastPaymentBreakdown?.principal || 0)})` : "No payments recorded"}</span></div></article>`;
     }).join("") : emptyState("✓", "No active loans.", "This member currently has no loans with an outstanding balance.");
 
     return `<section class="member-loan-group"><div class="member-group-heading"><div class="avatar">${initials(member.full_name)}</div><div><strong>${escapeHtml(member.full_name)}</strong><span>${escapeHtml(member.email)}</span></div><span class="member-loan-total">${loans.length} active</span></div><div class="member-loan-cards">${loanCards}</div></section>`;
@@ -470,7 +485,9 @@ function renderApplications() {
       ? `<div class="application-applicant">${escapeHtml(profile.full_name)} · ${escapeHtml(profile.email)}</div>`
       : "";
     const approvedTerms = application.approved_amount !== null && application.approved_amount !== undefined
-      ? `<div class="application-terms"><span>${fullCurrency.format(application.approved_amount)} approved</span><span>${fullCurrency.format(application.monthly_interest_amount)} monthly interest</span><span>${fullCurrency.format(application.monthly_payment)} / month payment</span><span>First due ${dateLabel(application.due_date)}</span></div>`
+      ? `<div class="application-terms"><span>${fullCurrency.format(application.approved_amount)} approved</span><span>${Number(application.monthly_interest_rate || 0).toFixed(2)}% monthly interest</span><span>${fullCurrency.format(application.monthly_interest_amount)} estimated monthly interest</span><span>First due ${dateLabel(application.due_date)}</span></div>`
+      : application.monthly_interest_amount !== null && application.monthly_interest_amount !== undefined
+        ? `<div class="application-terms"><span>${fullCurrency.format(application.requested_amount)} approved</span><span>${fullCurrency.format(application.monthly_interest_amount)} monthly interest</span><span>First due ${dateLabel(application.due_date)}</span></div>`
       : application.annual_rate !== null
         ? `<div class="application-terms"><span>${fullCurrency.format(application.requested_amount)} approved</span><span>${Number(application.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(application.monthly_payment)} / month</span><span>First due ${dateLabel(application.due_date)}</span></div>`
         : "";
@@ -582,7 +599,7 @@ function openLoanModal() {
   openModal("Add a loan", "Add the terms you want to keep track of.", `
     <label for="loan-name" class="field-full">Loan name</label><input id="loan-name" name="name" class="field-full" placeholder="e.g. Home loan" required maxlength="55">
     <label for="loan-lender" class="field-full">Lender</label><input id="loan-lender" name="lender" class="field-full" placeholder="e.g. Your bank" required maxlength="55">
-    <label for="loan-principal" class="field-half">Original amount</label><label for="loan-rate" class="field-half">Annual interest (%)</label>
+    <label for="loan-principal" class="field-half">Original amount (INR)</label><label for="loan-rate" class="field-half">Annual interest (%)</label>
     <input id="loan-principal" name="principal" class="field-half" type="number" min="0.01" step="0.01" placeholder="15000" required><input id="loan-rate" name="rate" class="field-half" type="number" min="0" max="100" step="0.01" placeholder="5.5" required>
     <label for="loan-payment" class="field-half">Monthly payment</label><label for="loan-date" class="field-half">Next due date</label>
     <input id="loan-payment" name="payment" class="field-half" type="number" min="0.01" step="0.01" placeholder="350" required><input id="loan-date" name="dueDate" class="field-half" type="date" min="${today}" required>
@@ -604,9 +621,9 @@ function openLoanApplicationModal() {
   openModal("Apply for a loan", "Submit your requested terms for administrator review.", `
     <label for="application-name" class="field-full">Loan name</label><input id="application-name" name="name" class="field-full" placeholder="e.g. Home loan" required maxlength="55">
     <label for="application-lender" class="field-full">Lender</label><input id="application-lender" name="lender" class="field-full" placeholder="e.g. Your bank" required maxlength="55">
-    <label for="application-principal" class="field-full">Amount requested</label><input id="application-principal" name="principal" class="field-full" type="number" min="0.01" step="0.01" placeholder="15000" required>
+    <label for="application-principal" class="field-full">Amount requested (INR)</label><input id="application-principal" name="principal" class="field-full" type="number" min="0.01" step="0.01" placeholder="15000" required>
     <label for="application-term" class="field-full">How many months to repay?</label><input id="application-term" name="termMonths" class="field-full" type="number" min="1" max="600" step="1" placeholder="e.g. 36" required>
-    <p class="field-hint">The administrator will set the approved interest rate, monthly payment, and first due date if your application is approved.</p>`, "Submit application", async (form) => {
+    <p class="field-hint">The administrator will set the approved amount, monthly interest rate, and first due date if your application is approved.</p>`, "Submit application", async (form) => {
     const application = {
       name: form.get("name").trim(),
       lender: form.get("lender").trim(),
@@ -640,18 +657,17 @@ function openLoanApplicationReviewModal(applicationId) {
   const termDescription = requestedTerm === null ? "Set the final terms below." : `over ${requestedTerm} months. Set the final terms below.`;
   openModal("Set approved loan terms", `Approve ${escapeHtml(application.name)} for up to ${fullCurrency.format(application.requested_amount)} ${termDescription}`, `
     ${termField}
-    <label for="approved-amount" class="field-full">Approved loan amount</label><input id="approved-amount" name="amount" class="field-full" type="number" min="0.01" max="${Number(application.requested_amount)}" step="0.01" value="${Number(application.requested_amount)}" required>
-    <label for="approved-monthly-interest" class="field-full">Monthly interest amount</label><input id="approved-monthly-interest" name="monthlyInterest" class="field-full" type="number" min="0" step="0.01" placeholder="e.g. 100" required>
-    <label for="approved-payment" class="field-full">Approved monthly payment</label><input id="approved-payment" name="payment" class="field-full" type="number" min="0.01" step="0.01" placeholder="350" required>
+    <label for="approved-amount" class="field-full">Approved loan amount (INR)</label><input id="approved-amount" name="amount" class="field-full" type="number" min="0.01" max="${Number(application.requested_amount)}" step="0.01" value="${Number(application.requested_amount)}" required>
+    <label for="approved-monthly-interest-rate" class="field-full">Monthly interest rate (%)</label><input id="approved-monthly-interest-rate" name="monthlyInterestRate" class="field-full" type="number" min="0" max="100" step="0.01" placeholder="e.g. 2" required>
+    <p class="field-hint" id="approved-interest-preview">Enter the monthly rate to calculate estimated monthly interest.</p>
     <label for="approved-due-date" class="field-full">First payment due date</label><input id="approved-due-date" name="dueDate" class="field-full" type="date" min="${today}" required>
-    <p class="field-hint">The monthly interest amount is based on the approved amount and scales down as principal is repaid. The loan starts on approval.${requestedTerm === null ? "" : ` The requested term is ${requestedTerm} months.`}</p>`, "Approve loan", async (form) => {
+    <p class="field-hint">The interest amount is calculated from the approved principal and monthly rate, then scales down as principal is repaid. The loan starts on approval.${requestedTerm === null ? "" : ` The requested term is ${requestedTerm} months.`}</p>`, "Approve loan", async (form) => {
     const amount = Number(form.get("amount"));
-    const monthlyInterest = Number(form.get("monthlyInterest"));
-    const payment = Number(form.get("payment"));
+    const monthlyInterestRate = Number(form.get("monthlyInterestRate"));
     const dueDate = form.get("dueDate");
     const termMonths = requestedTerm ?? Number(form.get("termMonths"));
-    if (!Number.isInteger(termMonths) || termMonths < 1 || termMonths > 600 || amount <= 0 || amount > Number(application.requested_amount) || monthlyInterest < 0 || payment <= 0 || dueDate < today) {
-      document.getElementById("modal-error").textContent = "Enter a valid approved amount no greater than requested, a non-negative monthly interest amount, a positive monthly payment, and a first due date today or later.";
+    if (!Number.isInteger(termMonths) || termMonths < 1 || termMonths > 600 || amount <= 0 || amount > Number(application.requested_amount) || monthlyInterestRate < 0 || monthlyInterestRate > 100 || dueDate < today) {
+      document.getElementById("modal-error").textContent = "Enter a valid approved amount no greater than requested, a monthly interest rate between 0 and 100%, and a first due date today or later.";
       return false;
     }
     const { error } = await supabase.rpc("review_loan_application", {
@@ -659,13 +675,24 @@ function openLoanApplicationReviewModal(applicationId) {
       approve: true,
       approved_term_months: termMonths,
       approved_loan_amount: amount,
-      approved_monthly_interest: monthlyInterest,
-      approved_monthly_payment: payment,
+      approved_monthly_interest_rate: monthlyInterestRate,
       approved_due_date: dueDate
     });
     if (error) throw error;
     return "Loan application approved with the terms you entered.";
   });
+  const amountInput = document.getElementById("approved-amount");
+  const rateInput = document.getElementById("approved-monthly-interest-rate");
+  const preview = document.getElementById("approved-interest-preview");
+  const updateInterestPreview = () => {
+    const amount = Number(amountInput.value);
+    const rate = Number(rateInput.value);
+    preview.textContent = amount > 0 && rate >= 0
+      ? `Estimated monthly interest: ${fullCurrency.format(Math.round(amount * rate) / 100)}`
+      : "Enter the monthly rate to calculate estimated monthly interest.";
+  };
+  amountInput.addEventListener("input", updateInterestPreview);
+  rateInput.addEventListener("input", updateInterestPreview);
 }
 
 function openPaymentModal(loanId = "") {
@@ -682,7 +709,7 @@ function openPaymentModal(loanId = "") {
     : "Choose what the member paid. The payment will affect the loan only after an administrator approves it.", `
     <label for="payment-loan" class="field-full">Loan</label><select id="payment-loan" name="loanId" class="field-full">${options}</select>
     <label for="payment-type" class="field-full">Payment type</label><select id="payment-type" name="paymentType" class="field-full"><option value="interest_only">Interest-only payment (does not reduce principal)</option><option value="regular">Regular payment (interest first, remainder reduces principal)</option></select>
-    <label for="payment-amount" class="field-half">Amount paid</label><label for="payment-date" class="field-half">Payment date</label>
+    <label for="payment-amount" class="field-half">Amount paid (INR)</label><label for="payment-date" class="field-half">Payment date</label>
     <input id="payment-amount" name="amount" class="field-half" type="number" min="0.01" step="0.01" placeholder="350" required><input id="payment-date" name="date" class="field-half" type="date" value="${today}" max="${today}" required>
     <label for="payment-note" class="field-full">Note (optional)</label><input id="payment-note" name="note" class="field-full" placeholder="e.g. Monthly repayment" maxlength="60">`, isAdmin ? "Record verified payment" : "Send payment request", async (form) => {
     const loan = findLoan(form.get("loanId"));
@@ -837,8 +864,7 @@ document.addEventListener("click", async (event) => {
         approve: false,
         approved_term_months: null,
         approved_loan_amount: null,
-        approved_monthly_interest: null,
-        approved_monthly_payment: null,
+        approved_monthly_interest_rate: null,
         approved_due_date: null
       });
       if (error) throw error;
