@@ -297,7 +297,10 @@ function renderLoans() {
     const status = statusFor(loan);
     const progress = paymentProgress(loan);
     const paid = totalPaid(loan.id);
-    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span><span>${fullCurrency.format(loan.monthly_payment)} / month</span></div><div class="loan-card-actions"><button class="small-action" data-action="edit-due" data-id="${loan.id}">Update due date</button><button class="small-action" data-action="add-payment" data-id="${loan.id}">Record payment</button></div></article>`;
+    const dueDateAction = state.profile.role === "admin"
+      ? `<button class="small-action" data-action="edit-due" data-id="${loan.id}">Update due date</button>`
+      : "";
+    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span><span>${fullCurrency.format(loan.monthly_payment)} / month</span></div><div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">Record payment</button></div></article>`;
   }).join("") : emptyState("◫", "No loans to show yet.", state.profile.role === "admin"
     ? "Add your first loan to keep the balance and due date in one place."
     : "Apply for a loan to start tracking your balance and due dates.");
@@ -571,6 +574,7 @@ function openPaymentModal(loanId = "") {
 }
 
 function openDueDateModal(loanId) {
+  if (state.profile?.role !== "admin") return;
   const loan = findLoan(loanId);
   if (!loan) return;
   openModal("Update due date", `Set the next payment date for ${escapeHtml(loan.name)}.`, `

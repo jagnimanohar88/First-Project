@@ -261,10 +261,11 @@ create policy "Administrators create loans"
   with check (user_id = (select auth.uid()) and (select public.is_admin()));
 
 drop policy if exists "Approved members update their loans" on public.loans;
-create policy "Approved members update their loans"
+drop policy if exists "Administrators update loan due dates" on public.loans;
+create policy "Administrators update loan due dates"
   on public.loans for update to authenticated
-  using (user_id = (select auth.uid()) and (select public.is_approved()))
-  with check (user_id = (select auth.uid()) and (select public.is_approved()));
+  using ((select public.is_admin()))
+  with check ((select public.is_admin()));
 
 drop policy if exists "Approved members read their payments" on public.payments;
 create policy "Approved members read their payments"
