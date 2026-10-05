@@ -1,6 +1,6 @@
 # LoanLedger
 
-LoanLedger tracks loan balances, estimated interest, repayments, and due dates. Sign-ups require administrator approval. Supabase Auth and a shared Postgres database make account requests and loan records available across browsers and devices.
+LoanLedger tracks loan balances, estimated interest, repayments, and due dates. Sign-ups require administrator approval. Members can submit loan applications for administrator approval; an approved application creates the loan on the member's account. Supabase Auth and a shared Postgres database make account requests, loan applications, and loan records available across browsers and devices.
 
 ## Set up Supabase
 
@@ -31,8 +31,11 @@ LoanLedger tracks loan balances, estimated interest, repayments, and due dates. 
    ```
 
 3. Sign in to LoanLedger again. The **Access requests** section lists sign-ups from every browser. Approve or reject a request there; approved users can sign in from their own devices. Approval does not send an email, so let the user know they can sign in.
+4. Approved members can use **Apply for a loan** to submit proposed loan terms. Review applications in **Loan applications**: approving creates the loan in that member's account; rejecting records the decision without adding a loan. Members cannot create tracked loans directly or approve their own applications.
 
 Do not make an arbitrary user an administrator. The app never lets users grant themselves admin access; initial administrator setup is an explicit database-owner action.
+
+If you already ran `supabase/schema.sql`, run the updated file again in the Supabase SQL Editor to add the application workflow and its row-level security policies.
 
 ## Loan and payment calculations
 
