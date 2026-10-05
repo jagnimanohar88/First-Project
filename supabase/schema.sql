@@ -249,7 +249,13 @@ create policy "Approved members read their loans"
   on public.loans for select to authenticated
   using (user_id = (select auth.uid()) and (select public.is_approved()));
 
+drop policy if exists "Administrators read all member loans" on public.loans;
+create policy "Administrators read all member loans"
+  on public.loans for select to authenticated
+  using ((select public.is_admin()));
+
 drop policy if exists "Approved members create their loans" on public.loans;
+drop policy if exists "Administrators create loans" on public.loans;
 create policy "Administrators create loans"
   on public.loans for insert to authenticated
   with check (user_id = (select auth.uid()) and (select public.is_admin()));
@@ -264,6 +270,11 @@ drop policy if exists "Approved members read their payments" on public.payments;
 create policy "Approved members read their payments"
   on public.payments for select to authenticated
   using (user_id = (select auth.uid()) and (select public.is_approved()));
+
+drop policy if exists "Administrators read all member payments" on public.payments;
+create policy "Administrators read all member payments"
+  on public.payments for select to authenticated
+  using ((select public.is_admin()));
 
 drop policy if exists "Approved members create their payments" on public.payments;
 create policy "Approved members create their payments"

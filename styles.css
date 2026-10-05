@@ -178,6 +178,24 @@ button { cursor: pointer; }
 .loan-card-progress { margin-top: 16px; }
 .loan-card-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; color: #7e8982; font-size: 10px; }
 .loan-card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid #eff1ee; }
+.member-loan-list { display: grid; gap: 13px; margin-top: 17px; }
+.member-loan-group { padding: 15px; border: 1px solid #edf0ec; border-radius: 9px; }
+.member-group-heading { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid #eff1ee; }
+.member-group-heading > div:nth-child(2) { display: grid; min-width: 0; gap: 4px; }
+.member-group-heading strong { overflow: hidden; color: #34443b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.member-group-heading span { overflow: hidden; color: #929b95; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.member-group-heading .member-loan-total { margin-left: auto; color: #5b8063; font-weight: 700; }
+.member-loan-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 12px; }
+.member-loan-card { min-width: 0; padding: 12px; border: 1px solid #f0f2ef; border-radius: 8px; background: #fcfdfb; }
+.member-loan-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.member-loan-heading > div { display: grid; min-width: 0; gap: 4px; }
+.member-loan-heading strong { overflow: hidden; color: #34443b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.member-loan-heading > div span { overflow: hidden; color: #929b95; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.member-loan-balance { margin-top: 13px; color: #263b32; font: 700 19px Manrope, sans-serif; letter-spacing: -.5px; }
+.member-loan-balance > span { color: #929b95; font: 400 9px "DM Sans", sans-serif; letter-spacing: 0; }
+.member-loan-details { display: flex; flex-wrap: wrap; gap: 7px 12px; margin-top: 10px; color: #758078; font-size: 9px; }
+.member-loan-payment { display: grid; gap: 5px; margin-top: 11px; padding-top: 9px; border-top: 1px solid #edf0ec; color: #7b8780; font-size: 9px; }
+.member-loan-payment strong { color: #3e805b; }
 .small-action { padding: 5px 8px; border: 1px solid #e6ebe6; border-radius: 6px; background: #fff; color: #44775b; font-size: 9px; font-weight: 600; }
 .payment-summary { grid-template-columns: repeat(2,minmax(0,1fr)); max-width: 500px; }
 .payment-summary .metric-card > strong { font-size: 23px; }
@@ -269,6 +287,7 @@ button { cursor: pointer; }
   .application-row { align-items: flex-start; flex-direction: column; gap: 11px; }
   .application-row .approval-actions { align-self: flex-end; }
   .application-terms { gap: 6px 12px; }
+  .member-loan-cards { grid-template-columns: 1fr; }
 }
 @media (max-width: 390px) {
   .page-heading { gap: 9px; }
