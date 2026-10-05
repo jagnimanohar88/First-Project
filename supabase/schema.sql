@@ -18,6 +18,7 @@ create table if not exists public.loans (
   lender text not null check (char_length(lender) between 1 and 55),
   principal numeric(14, 2) not null check (principal > 0),
   annual_rate numeric(5, 2) not null check (annual_rate between 0 and 100),
+  monthly_interest_rate numeric(5, 2) check (monthly_interest_rate between 0 and 100),
   monthly_interest_amount numeric(14, 2) check (monthly_interest_amount >= 0),
   monthly_payment numeric(14, 2) not null check (monthly_payment > 0),
   start_date date not null,
@@ -71,6 +72,7 @@ create table if not exists public.loan_applications (
   term_months integer not null check (term_months between 1 and 600),
   approved_amount numeric(14, 2) check (approved_amount > 0),
   annual_rate numeric(5, 2) check (annual_rate between 0 and 100),
+  monthly_interest_rate numeric(5, 2) check (monthly_interest_rate between 0 and 100),
   monthly_interest_amount numeric(14, 2) check (monthly_interest_amount >= 0),
   monthly_payment numeric(14, 2) check (monthly_payment > 0),
   start_date date,
@@ -91,6 +93,10 @@ create table if not exists public.loan_applications (
 );
 
 alter table public.loans add column if not exists term_months integer;
+alter table public.loans add column if not exists monthly_interest_rate numeric(5, 2);
+alter table public.loans drop constraint if exists loans_monthly_interest_rate_check;
+alter table public.loans add constraint loans_monthly_interest_rate_check
+  check (monthly_interest_rate is null or monthly_interest_rate between 0 and 100);
 alter table public.loans add column if not exists monthly_interest_amount numeric(14, 2);
 alter table public.loans drop constraint if exists loans_monthly_interest_amount_check;
 alter table public.loans add constraint loans_monthly_interest_amount_check
@@ -98,6 +104,7 @@ alter table public.loans add constraint loans_monthly_interest_amount_check
 alter table public.loans drop constraint if exists loans_term_months_check;
 alter table public.loans add constraint loans_term_months_check
   check (term_months is null or term_months between 1 and 600);
+alter table public.loans alter column monthly_payment drop not null;
 
 alter table public.payments add column if not exists payment_type text not null default 'regular';
 alter table public.payments drop constraint if exists payments_payment_type_check;
@@ -106,10 +113,14 @@ alter table public.payments add constraint payments_payment_type_check
 
 alter table public.loan_applications add column if not exists term_months integer;
 alter table public.loan_applications add column if not exists approved_amount numeric(14, 2);
+alter table public.loan_applications add column if not exists monthly_interest_rate numeric(5, 2);
 alter table public.loan_applications add column if not exists monthly_interest_amount numeric(14, 2);
 alter table public.loan_applications drop constraint if exists loan_applications_approved_amount_check;
 alter table public.loan_applications add constraint loan_applications_approved_amount_check
   check (approved_amount is null or approved_amount > 0);
+alter table public.loan_applications drop constraint if exists loan_applications_monthly_interest_rate_check;
+alter table public.loan_applications add constraint loan_applications_monthly_interest_rate_check
+  check (monthly_interest_rate is null or monthly_interest_rate between 0 and 100);
 alter table public.loan_applications drop constraint if exists loan_applications_monthly_interest_amount_check;
 alter table public.loan_applications add constraint loan_applications_monthly_interest_amount_check
   check (monthly_interest_amount is null or monthly_interest_amount >= 0);
@@ -228,13 +239,13 @@ $$;
 
 drop function if exists public.review_loan_application(uuid, boolean);
 drop function if exists public.review_loan_application(uuid, boolean, integer, numeric, numeric, date);
+drop function if exists public.review_loan_application(uuid, boolean, integer, numeric, numeric, numeric, date);
 create or replace function public.review_loan_application(
   target_application_id uuid,
   approve boolean,
   approved_term_months integer,
   approved_loan_amount numeric,
-  approved_monthly_interest numeric,
-  approved_monthly_payment numeric,
+  approved_monthly_interest_rate numeric,
   approved_due_date date
 )
 returns void
@@ -244,6 +255,7 @@ set search_path = ''
 as $$
 declare
   loan_request public.loan_applications%rowtype;
+  approved_monthly_interest_amount numeric;
 begin
   if not public.is_admin() then
     raise exception 'Only an approved administrator can review loan applications';
@@ -265,27 +277,30 @@ begin
     if approved_loan_amount is null or approved_loan_amount <= 0 or approved_loan_amount > loan_request.requested_amount then
       raise exception 'The approved amount must be positive and cannot exceed the requested amount';
     end if;
-    if approved_monthly_interest is null or approved_monthly_interest < 0 then
-      raise exception 'Enter a non-negative monthly interest amount';
-    end if;
-    if approved_monthly_payment is null or approved_monthly_payment <= 0 then
-      raise exception 'Enter a positive approved monthly payment';
+    if approved_monthly_interest_rate is null
+       or approved_monthly_interest_rate < 0
+       or approved_monthly_interest_rate > 100 then
+      raise exception 'Enter a monthly interest rate between 0 and 100 percent';
     end if;
     if approved_due_date is null or approved_due_date < current_date then
       raise exception 'The first payment due date must be today or later';
     end if;
 
+    approved_monthly_interest_amount :=
+      round(approved_loan_amount * approved_monthly_interest_rate / 100, 2);
+
     insert into public.loans (
-      user_id, name, lender, principal, annual_rate, monthly_interest_amount,
-      monthly_payment, start_date, due_date, term_months
+      user_id, name, lender, principal, annual_rate, monthly_interest_rate,
+      monthly_interest_amount, monthly_payment, start_date, due_date, term_months
     ) values (
       loan_request.user_id,
       loan_request.name,
       loan_request.lender,
       approved_loan_amount,
       0,
-      approved_monthly_interest,
-      approved_monthly_payment,
+      approved_monthly_interest_rate,
+      approved_monthly_interest_amount,
+      null,
       current_date,
       approved_due_date,
       approved_term_months
@@ -295,8 +310,9 @@ begin
     set term_months = approved_term_months,
         approved_amount = approved_loan_amount,
         annual_rate = 0,
-        monthly_interest_amount = approved_monthly_interest,
-        monthly_payment = approved_monthly_payment,
+        monthly_interest_rate = approved_monthly_interest_rate,
+        monthly_interest_amount = approved_monthly_interest_amount,
+        monthly_payment = null,
         start_date = current_date,
         due_date = approved_due_date
     where id = loan_request.id;
@@ -369,6 +385,8 @@ begin
     loop
       accrued_interest := accrued_interest
         + case
+            when loan_record.monthly_interest_rate is not null
+              then remaining_principal * loan_record.monthly_interest_rate / 100 * 12
             when loan_record.monthly_interest_amount is not null
               then remaining_principal * loan_record.monthly_interest_amount
                 / loan_record.principal * 12
@@ -396,6 +414,8 @@ begin
 
     accrued_interest := accrued_interest
       + case
+          when loan_record.monthly_interest_rate is not null
+            then remaining_principal * loan_record.monthly_interest_rate / 100 * 12
           when loan_record.monthly_interest_amount is not null
             then remaining_principal * loan_record.monthly_interest_amount
               / loan_record.principal * 12
@@ -437,12 +457,12 @@ revoke all on function public.is_admin() from public;
 revoke all on function public.create_profile_for_new_user() from public;
 revoke all on function public.sync_profile_email() from public;
 revoke all on function public.set_account_approval(uuid, boolean) from public;
-revoke all on function public.review_loan_application(uuid, boolean, integer, numeric, numeric, numeric, date) from public;
+revoke all on function public.review_loan_application(uuid, boolean, integer, numeric, numeric, date) from public;
 revoke all on function public.review_payment_request(uuid, boolean) from public;
 grant execute on function public.is_approved() to authenticated;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function public.set_account_approval(uuid, boolean) to authenticated;
-grant execute on function public.review_loan_application(uuid, boolean, integer, numeric, numeric, numeric, date) to authenticated;
+grant execute on function public.review_loan_application(uuid, boolean, integer, numeric, numeric, date) to authenticated;
 grant execute on function public.review_payment_request(uuid, boolean) to authenticated;
 
 alter table public.profiles enable row level security;
