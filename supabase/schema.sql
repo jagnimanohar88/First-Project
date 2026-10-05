@@ -345,6 +345,7 @@ declare
   principal_payment numeric;
   cursor_date date;
   remaining_balance numeric;
+  monthly_interest_due numeric;
 begin
   if not public.is_admin() then
     raise exception 'Only an approved administrator can review payment requests';
@@ -394,20 +395,15 @@ begin
           end
           * (prior_payment.payment_date - cursor_date)::numeric / 365;
       cursor_date := prior_payment.payment_date;
-      interest_payment := least(
-        case
-          when prior_payment.payment_type = 'interest_only' then round(accrued_interest, 2)
-          else accrued_interest
-        end,
-        prior_payment.amount
-      );
-      accrued_interest := greatest(0, accrued_interest - interest_payment);
-
-      if prior_payment.payment_type <> 'interest_only' then
+      if prior_payment.payment_type = 'interest_only' then
+        accrued_interest := accrued_interest - prior_payment.amount;
+      else
+        interest_payment := least(greatest(0, accrued_interest), prior_payment.amount);
         principal_payment := least(
           remaining_principal,
           greatest(0, prior_payment.amount - interest_payment)
         );
+        accrued_interest := accrued_interest - interest_payment;
         remaining_principal := greatest(0, remaining_principal - principal_payment);
       end if;
     end loop;
@@ -422,11 +418,21 @@ begin
           else remaining_principal * loan_record.annual_rate / 100
         end
         * (payment_request.payment_date - cursor_date)::numeric / 365;
-    remaining_balance := remaining_principal + accrued_interest;
+    remaining_balance := remaining_principal + greatest(0, accrued_interest);
+    monthly_interest_due := case
+      when loan_record.monthly_interest_rate is not null
+        then round(remaining_principal * loan_record.monthly_interest_rate / 100, 2)
+      when loan_record.monthly_interest_amount is not null
+        then round(remaining_principal * loan_record.monthly_interest_amount / loan_record.principal, 2)
+      else round(remaining_principal * loan_record.annual_rate / 1200, 2)
+    end;
 
     if payment_request.payment_type = 'interest_only'
-       and payment_request.amount > round(accrued_interest, 2) then
-      raise exception 'The requested interest-only payment is greater than the accrued interest on that date';
+       and payment_request.amount > greatest(
+         round(greatest(0, accrued_interest), 2),
+         monthly_interest_due - greatest(0, -accrued_interest)
+       ) then
+      raise exception 'The requested interest-only payment is greater than this month''s interest due';
     end if;
     if payment_request.payment_type = 'regular'
        and payment_request.amount > remaining_balance + 0.01 then

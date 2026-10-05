@@ -38,8 +38,12 @@ const monthlyDueAmount = (loan, principal) => hasMonthlyInterest(loan)
   : Math.round(principal * Number(loan.annual_rate) / 12) / 100;
 const monthlyDueLabel = () => "Estimated monthly interest due";
 const interestDueAmount = (loan, result) => hasMonthlyInterest(loan)
-  ? monthlyInterestAmountAt(loan, result.principal)
+  ? Math.max(0, monthlyInterestAmountAt(loan, result.principal) - result.interestCredit)
   : result.accruedInterest;
+const interestOnlyPaymentLimit = (loan, result) => Math.max(
+  Math.round(result.accruedInterest * 100) / 100,
+  Math.max(0, monthlyInterestAmountAt(loan, result.principal) - result.interestCredit)
+);
 const interestForDays = (loan, principal, days) => loan.monthly_interest_rate !== null && loan.monthly_interest_rate !== undefined
   ? principal * Number(loan.monthly_interest_rate) / 100 * 12 * days / 365
   : loan.monthly_interest_amount !== null && loan.monthly_interest_amount !== undefined
@@ -207,10 +211,9 @@ function loanState(loan, asOf = new Date().toISOString().slice(0, 10)) {
   for (const payment of payments) {
     accruedInterest += interestForDays(loan, principal, daysBetween(cursor, payment.payment_date));
     cursor = payment.payment_date;
-    const interestDue = payment.payment_type === "interest_only"
-      ? Math.round(accruedInterest * 100) / 100
-      : accruedInterest;
-    const interestPayment = Math.min(interestDue, Number(payment.amount));
+    const interestPayment = payment.payment_type === "interest_only"
+      ? Number(payment.amount)
+      : Math.min(Math.max(0, accruedInterest), Number(payment.amount));
     accruedInterest -= interestPayment;
     paidInterest += interestPayment;
     const principalPayment = payment.payment_type === "interest_only"
@@ -223,9 +226,10 @@ function loanState(loan, asOf = new Date().toISOString().slice(0, 10)) {
   return {
     principal: Math.max(0, principal),
     accruedInterest: Math.max(0, accruedInterest),
+    interestCredit: Math.max(0, -accruedInterest),
     paidInterest,
     paymentBreakdown,
-    balance: Math.max(0, principal + accruedInterest)
+    balance: Math.max(0, principal + Math.max(0, accruedInterest))
   };
 }
 
@@ -731,8 +735,8 @@ function openPaymentModal(loanId = "") {
       return false;
     }
     const balance = loanState(loan, date);
-    if (paymentType === "interest_only" && amount > Math.round(balance.accruedInterest * 100) / 100 + 0.001) {
-      document.getElementById("modal-error").textContent = `An interest-only payment cannot exceed the accrued interest of ${fullCurrency.format(balance.accruedInterest)} on that date.`;
+    if (paymentType === "interest_only" && amount > interestOnlyPaymentLimit(loan, balance) + 0.001) {
+      document.getElementById("modal-error").textContent = `An interest-only payment cannot exceed this month's interest due of ${fullCurrency.format(interestOnlyPaymentLimit(loan, balance))}.`;
       return false;
     }
     if (paymentType === "regular" && amount > balance.balance + 0.01) {
