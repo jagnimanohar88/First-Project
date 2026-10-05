@@ -184,6 +184,15 @@ button { cursor: pointer; }
 .approvals-surface { max-width: 900px; }
 .approval-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px 0; border-bottom: 1px solid #eff1ee; }
 .approval-row:last-child { border-bottom: 0; }
+.application-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 0; border-bottom: 1px solid #eff1ee; }
+.application-row:last-child { border-bottom: 0; }
+.application-main { min-width: 0; flex: 1; }
+.application-title { display: flex; align-items: center; gap: 9px; }
+.application-title > strong { overflow: hidden; color: #34443b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.application-applicant { margin-top: 6px; color: #59675f; font-size: 10px; font-weight: 600; }
+.application-lender { margin-top: 5px; color: #929b95; font-size: 9px; }
+.application-terms { display: flex; flex-wrap: wrap; gap: 7px 16px; margin-top: 10px; color: #6e7d73; font-size: 9px; }
+.application-row .approval-actions { flex: 0 0 auto; }
 .approval-person { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .approval-person .avatar { background: #f1eadc; color: #987b4b; }
 .approval-person strong { display: block; font-size: 11px; }
@@ -257,6 +266,9 @@ button { cursor: pointer; }
   .loan-cards { grid-template-columns: 1fr; }
   .data-table th, .data-table td { padding-right: 8px; padding-left: 5px; }
   .approval-person span { max-width: 140px; }
+  .application-row { align-items: flex-start; flex-direction: column; gap: 11px; }
+  .application-row .approval-actions { align-self: flex-end; }
+  .application-terms { gap: 6px 12px; }
 }
 @media (max-width: 390px) {
   .page-heading { gap: 9px; }

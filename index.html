@@ -59,6 +59,7 @@
         <nav class="main-nav" aria-label="Main navigation">
           <button class="nav-link active" data-view="overview"><span class="nav-icon">▦</span>Overview</button>
           <button class="nav-link" data-view="loans"><span class="nav-icon">◫</span>My loans</button>
+          <button class="nav-link" data-view="applications"><span class="nav-icon">▣</span><span id="applications-nav-label">Apply for a loan</span><span class="nav-count hidden admin-only" id="application-count">0</span></button>
           <button class="nav-link" data-view="payments"><span class="nav-icon">↗</span>Payments</button>
           <button class="nav-link admin-only hidden" data-view="approvals"><span class="nav-icon">♧</span>Access requests<span class="nav-count hidden" id="approval-count">0</span></button>
         </nav>
@@ -82,7 +83,7 @@
           <section class="view active" id="view-overview">
             <div class="page-heading">
               <div><span class="eyebrow" id="today-label">YOUR MONEY, IN FOCUS</span><h1 id="greeting">Good morning</h1><p class="muted">Here’s where things stand with your loans.</p></div>
-              <button class="button button-dark" data-action="add-loan"><span class="plus">+</span> Add a loan</button>
+              <button class="button button-dark admin-only hidden" data-action="add-loan"><span class="plus">+</span> Add a loan</button>
             </div>
             <div id="reminder-banner" class="reminder-banner hidden"></div>
             <div class="metric-grid">
@@ -108,7 +109,7 @@
           </section>
 
           <section class="view" id="view-loans">
-            <div class="page-heading"><div><span class="eyebrow">YOUR BORROWING</span><h1>My loans</h1><p class="muted">See what you owe and keep each repayment on track.</p></div><button class="button button-dark" data-action="add-loan"><span class="plus">+</span> Add a loan</button></div>
+            <div class="page-heading"><div><span class="eyebrow">YOUR BORROWING</span><h1>My loans</h1><p class="muted">See what you owe and keep each repayment on track.</p></div><button class="button button-dark admin-only hidden" data-action="add-loan"><span class="plus">+</span> Add a loan</button></div>
             <div class="surface loans-page-surface"><div class="section-heading"><div><h2>All loans</h2><p id="loan-count-label">Your active and paid-off loans</p></div></div><div id="all-loans" class="loan-cards"></div></div>
           </section>
 
@@ -119,6 +120,12 @@
               <article class="metric-card"><div class="metric-top"><span>Payments logged</span><span class="metric-icon">▤</span></div><strong id="payments-count">0</strong><div class="metric-foot">Your repayment history</div></article>
             </div>
             <section class="surface activity-card"><div class="section-heading"><div><h2>All payments</h2><p>Sorted by most recent</p></div></div><div id="all-payments"></div></section>
+          </section>
+
+          <section class="view" id="view-applications">
+            <div class="page-heading"><div><span class="eyebrow">LOAN REQUESTS</span><h1 id="applications-heading">Apply for a loan</h1><p class="muted" id="applications-description">Submit your requested loan terms for administrator review.</p></div><button class="button button-dark member-only" data-action="apply-loan"><span class="plus">+</span> Apply for a loan</button></div>
+            <section class="surface approvals-surface"><div class="section-heading"><div><h2 id="applications-list-heading">Your applications</h2><p id="applications-list-description">Track the review status of your requests.</p></div></div><div id="loan-applications"></div></section>
+            <div class="approval-info"><span class="approval-info-icon">i</span><p><strong>What happens next?</strong><br>Your application will be reviewed by an administrator. If approved, it will be added to My loans. You can still record payments only after approval.</p></div>
           </section>
 
           <section class="view" id="view-approvals">

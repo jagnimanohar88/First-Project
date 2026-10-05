@@ -8,7 +8,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const fullCurrency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
-const state = { user: null, profile: null, loans: [], payments: [], pendingUsers: [] };
+const state = { user: null, profile: null, loans: [], payments: [], pendingUsers: [], applications: [] };
 let isRegistering = false;
 let toastTimer;
 let authNotice = "";
@@ -44,6 +44,7 @@ async function signOutLocally() {
   state.loans = [];
   state.payments = [];
   state.pendingUsers = [];
+  state.applications = [];
   showAuthScreen();
 }
 
@@ -54,6 +55,7 @@ async function loadSignedInSession(session, generation) {
     state.loans = [];
     state.payments = [];
     state.pendingUsers = [];
+    state.applications = [];
     showAuthScreen();
     if (authNotice) showAuthNotice(authNotice);
     return;
@@ -94,16 +96,21 @@ async function loadSignedInSession(session, generation) {
 
 async function refreshDashboard(generation = authGeneration) {
   if (!state.user || !state.profile) return;
-  const [loansResult, paymentsResult] = await Promise.all([
+  const [loansResult, paymentsResult, applicationsResult] = await Promise.all([
     supabase.from("loans").select("*").order("created_at", { ascending: false }),
-    supabase.from("payments").select("*").order("payment_date", { ascending: false })
+    supabase.from("payments").select("*").order("payment_date", { ascending: false }),
+    supabase.from("loan_applications")
+      .select("*, profiles!loan_applications_user_id_fkey(full_name, email)")
+      .order("created_at", { ascending: false })
   ]);
   if (generation !== authGeneration) return;
   if (loansResult.error) throw loansResult.error;
   if (paymentsResult.error) throw paymentsResult.error;
+  if (applicationsResult.error) throw applicationsResult.error;
 
   state.loans = loansResult.data;
   state.payments = paymentsResult.data;
+  state.applications = applicationsResult.data;
   if (state.profile.role === "admin") {
     const { data, error } = await supabase
       .from("profiles")
@@ -195,6 +202,18 @@ function render() {
   document.getElementById("sidebar-avatar").textContent = initials(user.full_name);
   document.getElementById("top-avatar").textContent = initials(user.full_name);
   document.querySelectorAll(".admin-only").forEach((el) => el.classList.toggle("hidden", user.role !== "admin"));
+  document.querySelectorAll(".member-only").forEach((el) => el.classList.toggle("hidden", user.role === "admin"));
+  document.getElementById("applications-nav-label").textContent = user.role === "admin" ? "Loan applications" : "Apply for a loan";
+  document.getElementById("application-count").textContent = state.applications.filter((application) => application.status === "pending").length;
+  document.getElementById("application-count").classList.toggle("hidden", user.role !== "admin" || !state.applications.some((application) => application.status === "pending"));
+  document.getElementById("applications-heading").textContent = user.role === "admin" ? "Loan applications" : "Apply for a loan";
+  document.getElementById("applications-description").textContent = user.role === "admin"
+    ? "Review loan requests from approved members."
+    : "Submit your requested loan terms for administrator review.";
+  document.getElementById("applications-list-heading").textContent = user.role === "admin" ? "Submitted applications" : "Your applications";
+  document.getElementById("applications-list-description").textContent = user.role === "admin"
+    ? "Approve a request to add it to the member's loans, or reject it."
+    : "Track the review status of your requests.";
   document.getElementById("approval-count").textContent = state.pendingUsers.length;
   document.getElementById("approval-count").classList.toggle("hidden", state.pendingUsers.length === 0);
   const hour = new Date().getHours();
@@ -204,6 +223,7 @@ function render() {
   renderLoans();
   renderPayments();
   renderApprovals();
+  renderApplications();
   renderReminder();
 }
 
@@ -284,17 +304,53 @@ function renderApprovals() {
   ).join("") : emptyState("✓", "No pending requests.", "New account requests will appear here for your review.");
 }
 
+function renderApplications() {
+  const container = document.getElementById("loan-applications");
+  if (!state.applications.length) {
+    container.innerHTML = emptyState("▣", "No loan applications yet.", state.profile.role === "admin"
+      ? "Submitted loan requests will appear here."
+      : "Submit an application to request a loan.");
+    return;
+  }
+  const applications = state.applications.slice().sort((a, b) => {
+    if (a.status === "pending" && b.status !== "pending") return -1;
+    if (a.status !== "pending" && b.status === "pending") return 1;
+    return b.created_at.localeCompare(a.created_at);
+  });
+  container.innerHTML = applications.map((application) => {
+    const profile = application.profiles;
+    const isAdmin = state.profile.role === "admin";
+    const statusLabel = application.status[0].toUpperCase() + application.status.slice(1);
+    const actions = isAdmin && application.status === "pending"
+      ? `<div class="approval-actions"><button class="reject-button" data-action="reject-loan-application" data-id="${application.id}">Reject</button><button class="approve-button" data-action="approve-loan-application" data-id="${application.id}">Approve loan</button></div>`
+      : "";
+    const applicant = isAdmin && profile
+      ? `<div class="application-applicant">${escapeHtml(profile.full_name)} · ${escapeHtml(profile.email)}</div>`
+      : "";
+    return `<article class="application-row"><div class="application-main"><div class="application-title"><strong>${escapeHtml(application.name)}</strong><span class="status-pill ${application.status === "pending" ? "due-soon" : application.status === "rejected" ? "overdue" : ""}">${statusLabel}</span></div>${applicant}<div class="application-lender">${escapeHtml(application.lender)} · Requested ${dateLabel(application.created_at.slice(0, 10))}</div><div class="application-terms"><span>${fullCurrency.format(application.requested_amount)} requested</span><span>${Number(application.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(application.monthly_payment)} / month</span><span>First due ${dateLabel(application.due_date)}</span></div></div>${actions}</article>`;
+  }).join("");
+}
+
 function emptyState(symbol, title, description) {
   return `<div class="empty-state"><span class="empty-symbol">${symbol}</span><strong>${title}</strong><br>${description}</div>`;
 }
 
-function showView(view) {
+async function showView(view) {
   if (view === "approvals" && state.profile?.role !== "admin") return;
+  if (view === "applications" && !state.profile) return;
   document.querySelectorAll(".view").forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
   document.querySelectorAll(".nav-link[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   const active = document.getElementById(`view-${view}`);
   if (active) document.getElementById("breadcrumb-current").textContent = active.querySelector("h1")?.textContent || "Overview";
   document.getElementById("sidebar").classList.remove("open");
+  if (view === "applications" && state.profile.role === "admin") {
+    try {
+      await refreshDashboard();
+    } catch (error) {
+      console.error("Could not refresh loan applications.", error);
+      showToast(`Could not refresh applications: ${error.message}`);
+    }
+  }
 }
 
 function showToast(message) {
@@ -372,6 +428,7 @@ function todayISO() {
 }
 
 function openLoanModal() {
+  if (state.profile?.role !== "admin") return;
   const today = todayISO();
   openModal("Add a loan", "Add the terms you want to keep track of.", `
     <label for="loan-name" class="field-full">Loan name</label><input id="loan-name" name="name" class="field-full" placeholder="e.g. Home loan" required maxlength="55">
@@ -390,6 +447,37 @@ function openLoanModal() {
     const { error } = await supabase.from("loans").insert(loan);
     if (error) throw error;
     return "Loan added. You’re all set.";
+  });
+}
+
+function openLoanApplicationModal() {
+  if (state.profile?.role !== "member") return;
+  const today = todayISO();
+  openModal("Apply for a loan", "Submit your requested terms for administrator review.", `
+    <label for="application-name" class="field-full">Loan name</label><input id="application-name" name="name" class="field-full" placeholder="e.g. Home loan" required maxlength="55">
+    <label for="application-lender" class="field-full">Lender</label><input id="application-lender" name="lender" class="field-full" placeholder="e.g. Your bank" required maxlength="55">
+    <label for="application-principal" class="field-half">Amount requested</label><label for="application-rate" class="field-half">Proposed annual interest (%)</label>
+    <input id="application-principal" name="principal" class="field-half" type="number" min="0.01" step="0.01" placeholder="15000" required><input id="application-rate" name="rate" class="field-half" type="number" min="0" max="100" step="0.01" placeholder="5.5" required>
+    <label for="application-payment" class="field-half">Proposed monthly payment</label><label for="application-date" class="field-half">Proposed first due date</label>
+    <input id="application-payment" name="payment" class="field-half" type="number" min="0.01" step="0.01" placeholder="350" required><input id="application-date" name="dueDate" class="field-half" type="date" min="${today}" required>
+    <label for="application-start" class="field-full">Proposed loan start date</label><input id="application-start" name="startDate" class="field-full" type="date" value="${today}" min="${today}" required>
+    <p class="field-hint">These are requested terms only. A loan is added to your account only if an administrator approves this application.</p>`, "Submit application", async (form) => {
+    const application = {
+      name: form.get("name").trim(),
+      lender: form.get("lender").trim(),
+      requested_amount: Number(form.get("principal")),
+      annual_rate: Number(form.get("rate")),
+      monthly_payment: Number(form.get("payment")),
+      due_date: form.get("dueDate"),
+      start_date: form.get("startDate")
+    };
+    if (application.start_date < today || application.start_date > application.due_date) {
+      document.getElementById("modal-error").textContent = "Choose a loan start date today or later, before the first due date.";
+      return false;
+    }
+    const { error } = await supabase.from("loan_applications").insert(application);
+    if (error) throw error;
+    return "Application submitted for administrator review.";
   });
 }
 
@@ -489,12 +577,13 @@ document.getElementById("sign-out").addEventListener("click", async () => {
   }
 });
 document.getElementById("menu-toggle").addEventListener("click", () => document.getElementById("sidebar").classList.toggle("open"));
-document.querySelectorAll(".nav-link[data-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
+document.querySelectorAll(".nav-link[data-view]").forEach((button) => button.addEventListener("click", () => { void showView(button.dataset.view); }));
 document.querySelectorAll("[data-navigate]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.navigate)));
 document.addEventListener("click", async (event) => {
   const action = event.target.closest("[data-action]");
   if (!action) return;
   if (action.dataset.action === "add-loan") openLoanModal();
+  if (action.dataset.action === "apply-loan") openLoanApplicationModal();
   if (action.dataset.action === "add-payment") openPaymentModal(action.dataset.id || "");
   if (action.dataset.action === "edit-due") openDueDateModal(action.dataset.id);
   if (["approve-user", "reject-user"].includes(action.dataset.action) && state.profile?.role === "admin") {
@@ -508,6 +597,23 @@ document.addEventListener("click", async (event) => {
     } catch (error) {
       console.error("Could not update account approval.", error);
       showToast(`Could not update approval: ${error.message}`);
+      action.disabled = false;
+    }
+  }
+  if (["approve-loan-application", "reject-loan-application"].includes(action.dataset.action) && state.profile?.role === "admin") {
+    const approve = action.dataset.action === "approve-loan-application";
+    action.disabled = true;
+    try {
+      const { error } = await supabase.rpc("review_loan_application", {
+        target_application_id: action.dataset.id,
+        approve
+      });
+      if (error) throw error;
+      await refreshDashboard();
+      showToast(approve ? "Loan application approved and added to the member's loans." : "Loan application rejected.");
+    } catch (error) {
+      console.error("Could not review loan application.", error);
+      showToast(`Could not review application: ${error.message}`);
       action.disabled = false;
     }
   }
