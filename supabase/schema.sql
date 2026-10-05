@@ -21,6 +21,7 @@ create table if not exists public.loans (
   monthly_payment numeric(14, 2) not null check (monthly_payment > 0),
   start_date date not null,
   due_date date not null,
+  term_months integer check (term_months between 1 and 600),
   color text not null default 'green' check (color in ('green', 'blue', 'amber')),
   created_at timestamptz not null default now(),
   constraint loans_start_before_due check (start_date <= due_date),
@@ -45,10 +46,11 @@ create table if not exists public.loan_applications (
   name text not null check (char_length(name) between 1 and 55),
   lender text not null check (char_length(lender) between 1 and 55),
   requested_amount numeric(14, 2) not null check (requested_amount > 0),
-  annual_rate numeric(5, 2) not null check (annual_rate between 0 and 100),
-  monthly_payment numeric(14, 2) not null check (monthly_payment > 0),
-  start_date date not null,
-  due_date date not null,
+  term_months integer not null check (term_months between 1 and 600),
+  annual_rate numeric(5, 2) check (annual_rate between 0 and 100),
+  monthly_payment numeric(14, 2) check (monthly_payment > 0),
+  start_date date,
+  due_date date,
   status text not null default 'pending'
     check (status in ('pending', 'approved', 'rejected')),
   reviewed_by uuid references public.profiles (id) on delete set null,
@@ -63,6 +65,20 @@ create table if not exists public.loan_applications (
   constraint loan_applications_user_id_fkey foreign key (user_id)
     references public.profiles (id) on delete cascade
 );
+
+alter table public.loans add column if not exists term_months integer;
+alter table public.loans drop constraint if exists loans_term_months_check;
+alter table public.loans add constraint loans_term_months_check
+  check (term_months is null or term_months between 1 and 600);
+
+alter table public.loan_applications add column if not exists term_months integer;
+alter table public.loan_applications alter column annual_rate drop not null;
+alter table public.loan_applications alter column monthly_payment drop not null;
+alter table public.loan_applications alter column start_date drop not null;
+alter table public.loan_applications alter column due_date drop not null;
+alter table public.loan_applications drop constraint if exists loan_applications_term_months_check;
+alter table public.loan_applications add constraint loan_applications_term_months_check
+  check (term_months is null or term_months between 1 and 600);
 
 create index if not exists loans_user_id_idx on public.loans (user_id);
 create index if not exists payments_user_id_date_idx on public.payments (user_id, payment_date desc);
@@ -167,7 +183,15 @@ begin
 end;
 $$;
 
-create or replace function public.review_loan_application(target_application_id uuid, approve boolean)
+drop function if exists public.review_loan_application(uuid, boolean);
+create or replace function public.review_loan_application(
+  target_application_id uuid,
+  approve boolean,
+  approved_term_months integer,
+  approved_annual_rate numeric,
+  approved_monthly_payment numeric,
+  approved_due_date date
+)
 returns void
 language plpgsql
 security definer
@@ -190,18 +214,40 @@ begin
   end if;
 
   if approve then
+    if approved_term_months is null or approved_term_months < 1 or approved_term_months > 600 then
+      raise exception 'Enter an approved repayment term between 1 and 600 months';
+    end if;
+    if approved_annual_rate is null or approved_annual_rate < 0 or approved_annual_rate > 100 then
+      raise exception 'Enter an approved annual interest rate between 0 and 100';
+    end if;
+    if approved_monthly_payment is null or approved_monthly_payment <= 0 then
+      raise exception 'Enter a positive approved monthly payment';
+    end if;
+    if approved_due_date is null or approved_due_date < current_date then
+      raise exception 'The first payment due date must be today or later';
+    end if;
+
     insert into public.loans (
-      user_id, name, lender, principal, annual_rate, monthly_payment, start_date, due_date
+      user_id, name, lender, principal, annual_rate, monthly_payment, start_date, due_date, term_months
     ) values (
       loan_request.user_id,
       loan_request.name,
       loan_request.lender,
       loan_request.requested_amount,
-      loan_request.annual_rate,
-      loan_request.monthly_payment,
-      loan_request.start_date,
-      loan_request.due_date
+      approved_annual_rate,
+      approved_monthly_payment,
+      current_date,
+      approved_due_date,
+      approved_term_months
     );
+
+    update public.loan_applications
+    set term_months = approved_term_months,
+        annual_rate = approved_annual_rate,
+        monthly_payment = approved_monthly_payment,
+        start_date = current_date,
+        due_date = approved_due_date
+    where id = loan_request.id;
   end if;
 
   update public.loan_applications
@@ -217,11 +263,11 @@ revoke all on function public.is_admin() from public;
 revoke all on function public.create_profile_for_new_user() from public;
 revoke all on function public.sync_profile_email() from public;
 revoke all on function public.set_account_approval(uuid, boolean) from public;
-revoke all on function public.review_loan_application(uuid, boolean) from public;
+revoke all on function public.review_loan_application(uuid, boolean, integer, numeric, numeric, date) from public;
 grant execute on function public.is_approved() to authenticated;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function public.set_account_approval(uuid, boolean) to authenticated;
-grant execute on function public.review_loan_application(uuid, boolean) to authenticated;
+grant execute on function public.review_loan_application(uuid, boolean, integer, numeric, numeric, date) to authenticated;
 
 alter table public.profiles enable row level security;
 alter table public.loans enable row level security;
@@ -236,7 +282,7 @@ grant insert (user_id, name, lender, principal, annual_rate, monthly_payment, st
 grant update (due_date) on table public.loans to authenticated;
 grant select, insert on table public.payments to authenticated;
 grant select on table public.loan_applications to authenticated;
-grant insert (name, lender, requested_amount, annual_rate, monthly_payment, start_date, due_date)
+grant insert (name, lender, requested_amount, term_months)
   on public.loan_applications to authenticated;
 
 drop policy if exists "Read own profile or profiles as an admin" on public.profiles;
@@ -298,6 +344,6 @@ create policy "Approved members submit loan applications"
     and status = 'pending'
     and reviewed_by is null
     and reviewed_at is null
-    and start_date >= current_date
+    and term_months between 1 and 600
     and (select public.is_approved())
   );

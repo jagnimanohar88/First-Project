@@ -31,13 +31,13 @@ LoanLedger tracks loan balances, estimated interest, repayments, and due dates. 
    ```
 
 3. Sign in to LoanLedger again. The **Access requests** section lists sign-ups from every browser. Approve or reject a request there; approved users can sign in from their own devices. Approval does not send an email, so let the user know they can sign in.
-4. Approved members can use **Apply for a loan** to submit proposed loan terms. Review applications in **Loan applications**: approving creates the loan in that member's account; rejecting records the decision without adding a loan. Members cannot create tracked loans directly or approve their own applications.
+4. Approved members can use **Apply for a loan** to submit the requested amount and repayment term in months. Interest, monthly payment, and first due date are set by the administrator during review. In **Loan applications**, approving creates the loan with those final terms in the member's account; rejecting records the decision without adding a loan. Members cannot create tracked loans directly or approve their own applications.
 5. Administrators can open **Member loans** to see approved external members, their active loan balances, due dates, estimated interest, and repayment history. Members continue to see only their own loans and payments.
 6. External members can record repayments, but only an administrator can change a loan's due date.
 
 Do not make an arbitrary user an administrator. The app never lets users grant themselves admin access; initial administrator setup is an explicit database-owner action.
 
-If you already ran `supabase/schema.sql`, run the updated file again in the Supabase SQL Editor to add the application workflow, administrator loan/payment tracking, and the corresponding row-level security policies.
+If you already ran `supabase/schema.sql`, run the updated file again in the Supabase SQL Editor to add the application workflow, administrator loan/payment tracking, and the corresponding row-level security policies. This migration makes new applications store a requested term and leaves final interest, payment, and due-date fields for administrator approval.
 
 ## Loan and payment calculations
 
