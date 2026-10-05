@@ -1,4 +1,4 @@
 window.LOANLEDGER_SUPABASE_CONFIG = {
-  url: "https://mcwicwhhluwsqefywmkg.supabase.co/rest/v1/",
+  url: "https://mcwicwhhluwsqefywmkg.supabase.co",
   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1jd2ljd2hobHV3c3FlZnl3bWtnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExOTA5MzcsImV4cCI6MjEwNjc2NjkzN30.bdelFXG8QWvPjPOgtWkqwHCk_Bg5VyHiCk535E3Si2Q"
 };
