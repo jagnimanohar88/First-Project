@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#132b2a">
+    <meta name="description" content="A simple place to keep loan balances, interest, repayments, and due dates in view.">
+    <title>LoanLedger — Keep every payment in view</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main id="auth-screen" class="auth-screen">
+      <section class="auth-story">
+        <a class="brand brand-light" href="#" aria-label="LoanLedger home">
+          <span class="brand-mark">L</span><span>loanledger</span>
+        </a>
+        <div class="story-content">
+          <span class="eyebrow">A clearer view of what you owe</span>
+          <h1>Make your next<br>payment a <em>calm</em> one.</h1>
+          <p>Keep every balance, interest estimate, and due date together. No surprises, just a clearer plan.</p>
+          <div class="story-note"><span class="note-check">✓</span><span>Payment reminders, right on your dashboard</span></div>
+          <div class="story-note"><span class="note-check">✓</span><span>Account access only after your approval</span></div>
+        </div>
+        <div class="story-footer">A personal finance prototype · Your data stays in this browser</div>
+      </section>
+      <section class="auth-panel">
+        <div class="auth-card">
+          <span class="eyebrow">WELCOME TO LOANLEDGER</span>
+          <h2 id="auth-title">Good to see you.</h2>
+          <p id="auth-description" class="muted">Sign in to pick up where you left off.</p>
+          <form id="auth-form">
+            <label for="auth-name" id="auth-name-label" class="hidden">Your name</label>
+            <input id="auth-name" name="name" type="text" autocomplete="name" placeholder="Your name" class="hidden">
+            <label for="auth-email">Email address</label>
+            <input id="auth-email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required>
+            <label for="auth-password">Password</label>
+            <div class="password-wrap">
+              <input id="auth-password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required minlength="6">
+              <button type="button" id="toggle-password" class="text-button" aria-label="Show password">Show</button>
+            </div>
+            <p id="auth-error" class="form-error" role="alert"></p>
+            <button type="submit" class="button button-primary button-wide" id="auth-submit">Sign in <span>→</span></button>
+          </form>
+          <p class="auth-switch"><span id="auth-switch-copy">New to LoanLedger?</span> <button type="button" id="auth-switch" class="text-button">Create an account</button></p>
+          <div class="demo-box"><span class="demo-icon">✦</span><span><strong>Just exploring?</strong><br>Demo: demo@loanledger.local <span class="demo-separator">·</span> demo123</span></div>
+          <p class="prototype-note">Prototype only. Never use a real password or sensitive financial data.</p>
+        </div>
+      </section>
+    </main>
+
+    <div id="app" class="app-layout hidden">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand brand-light sidebar-brand" href="#" aria-label="LoanLedger dashboard">
+          <span class="brand-mark">L</span><span>loanledger</span>
+        </a>
+        <div class="nav-caption">WORKSPACE</div>
+        <nav class="main-nav" aria-label="Main navigation">
+          <button class="nav-link active" data-view="overview"><span class="nav-icon">▦</span>Overview</button>
+          <button class="nav-link" data-view="loans"><span class="nav-icon">◫</span>My loans</button>
+          <button class="nav-link" data-view="payments"><span class="nav-icon">↗</span>Payments</button>
+          <button class="nav-link admin-only hidden" data-view="approvals"><span class="nav-icon">♧</span>Access requests<span class="nav-count hidden" id="approval-count">0</span></button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="help-card"><span class="help-sparkle">✳</span><strong>Small steps add up.</strong><p>Stay ahead of each due date, one payment at a time.</p></div>
+          <div class="sidebar-user">
+            <div class="avatar" id="sidebar-avatar">D</div>
+            <div class="sidebar-user-info"><strong id="sidebar-name">Demo User</strong><span id="sidebar-role">Administrator</span></div>
+            <button type="button" id="sign-out" class="icon-button sign-out" aria-label="Sign out" title="Sign out">↪</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <button type="button" id="menu-toggle" class="icon-button menu-toggle" aria-label="Toggle navigation">☰</button>
+          <div class="breadcrumbs"><span>Workspace</span><span class="crumb-divider">/</span><strong id="breadcrumb-current">Overview</strong></div>
+          <div class="topbar-right"><span class="prototype-pill"><span></span> Browser prototype</span><div class="avatar avatar-small" id="top-avatar">D</div></div>
+        </header>
+        <div class="main-content">
+          <section class="view active" id="view-overview">
+            <div class="page-heading">
+              <div><span class="eyebrow" id="today-label">YOUR MONEY, IN FOCUS</span><h1 id="greeting">Good morning</h1><p class="muted">Here’s where things stand with your loans.</p></div>
+              <button class="button button-dark" data-action="add-loan"><span class="plus">+</span> Add a loan</button>
+            </div>
+            <div id="reminder-banner" class="reminder-banner hidden"></div>
+            <div class="metric-grid">
+              <article class="metric-card balance-card"><div class="metric-top"><span>Total remaining</span><span class="metric-icon">↘</span></div><strong id="metric-balance">$0</strong><div class="metric-foot"><span class="metric-dot"></span>Across all active loans</div></article>
+              <article class="metric-card"><div class="metric-top"><span>Interest so far</span><span class="metric-icon green-icon">⌁</span></div><strong id="metric-interest">$0</strong><div class="metric-foot">Estimated accrued interest</div></article>
+              <article class="metric-card"><div class="metric-top"><span>Paid back</span><span class="metric-icon green-icon">↗</span></div><strong id="metric-paid">$0</strong><div class="metric-foot">Payments recorded to date</div></article>
+              <article class="metric-card due-metric"><div class="metric-top"><span>Next payment</span><span class="metric-icon amber-icon">◷</span></div><strong id="metric-due">$0</strong><div class="metric-foot" id="metric-due-date">No upcoming payments</div></article>
+            </div>
+            <div class="dashboard-grid">
+              <section class="surface loan-overview">
+                <div class="section-heading"><div><h2>Your loans</h2><p>Balances and progress at a glance</p></div><button class="link-button" data-navigate="loans">View all <span>→</span></button></div>
+                <div id="overview-loans" class="loan-list"></div>
+              </section>
+              <section class="surface upcoming-card">
+                <div class="section-heading"><div><h2>Coming up</h2><p>Keep your next due date in sight</p></div><span class="calendar-icon">▦</span></div>
+                <div id="upcoming-list" class="upcoming-list"></div>
+              </section>
+            </div>
+            <section class="surface activity-card">
+              <div class="section-heading"><div><h2>Recent payments</h2><p>Your latest repayment activity</p></div><button class="link-button" data-navigate="payments">Payment history <span>→</span></button></div>
+              <div id="recent-payments"></div>
+            </section>
+          </section>
+
+          <section class="view" id="view-loans">
+            <div class="page-heading"><div><span class="eyebrow">YOUR BORROWING</span><h1>My loans</h1><p class="muted">See what you owe and keep each repayment on track.</p></div><button class="button button-dark" data-action="add-loan"><span class="plus">+</span> Add a loan</button></div>
+            <div class="surface loans-page-surface"><div class="section-heading"><div><h2>All loans</h2><p id="loan-count-label">Your active and paid-off loans</p></div></div><div id="all-loans" class="loan-cards"></div></div>
+          </section>
+
+          <section class="view" id="view-payments">
+            <div class="page-heading"><div><span class="eyebrow">REPAYMENT HISTORY</span><h1>Payments</h1><p class="muted">A clear record of every payment you’ve logged.</p></div><button class="button button-dark" data-action="add-payment"><span class="plus">+</span> Record a payment</button></div>
+            <div class="metric-grid payment-summary">
+              <article class="metric-card"><div class="metric-top"><span>Total repaid</span><span class="metric-icon green-icon">↗</span></div><strong id="payments-total">$0</strong><div class="metric-foot">Across all loans</div></article>
+              <article class="metric-card"><div class="metric-top"><span>Payments logged</span><span class="metric-icon">▤</span></div><strong id="payments-count">0</strong><div class="metric-foot">Your repayment history</div></article>
+            </div>
+            <section class="surface activity-card"><div class="section-heading"><div><h2>All payments</h2><p>Sorted by most recent</p></div></div><div id="all-payments"></div></section>
+          </section>
+
+          <section class="view" id="view-approvals">
+            <div class="page-heading"><div><span class="eyebrow">ACCOUNT ACCESS</span><h1>Access requests</h1><p class="muted">Review and approve people before they can sign in.</p></div></div>
+            <div class="surface approvals-surface"><div class="section-heading"><div><h2>Pending approval</h2><p>New accounts stay locked until you approve them.</p></div></div><div id="pending-approvals"></div></div>
+            <div class="approval-info"><span class="approval-info-icon">i</span><p><strong>Prototype note</strong><br>Account approvals are stored only in this browser and are not a security boundary. Use a real identity provider and server-side authorization before handling actual user accounts.</p></div>
+          </section>
+          <footer class="page-footer">LoanLedger is a browser-only prototype. Balances and interest are estimates, not financial advice.</footer>
+        </div>
+      </section>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </div>
+    <div id="modal-layer" class="modal-layer hidden"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
