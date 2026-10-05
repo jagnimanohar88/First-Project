@@ -8,7 +8,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const fullCurrency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 const dateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" });
-const state = { user: null, profile: null, loans: [], payments: [], pendingUsers: [], applications: [] };
+const state = { user: null, profile: null, loans: [], payments: [], pendingUsers: [], applications: [], approvedMembers: [] };
 let isRegistering = false;
 let toastTimer;
 let authNotice = "";
@@ -45,6 +45,7 @@ async function signOutLocally() {
   state.payments = [];
   state.pendingUsers = [];
   state.applications = [];
+  state.approvedMembers = [];
   showAuthScreen();
 }
 
@@ -56,6 +57,7 @@ async function loadSignedInSession(session, generation) {
     state.payments = [];
     state.pendingUsers = [];
     state.applications = [];
+    state.approvedMembers = [];
     showAuthScreen();
     if (authNotice) showAuthNotice(authNotice);
     return;
@@ -112,16 +114,25 @@ async function refreshDashboard(generation = authGeneration) {
   state.payments = paymentsResult.data;
   state.applications = applicationsResult.data;
   if (state.profile.role === "admin") {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, email, created_at")
-      .eq("approval_status", "pending")
-      .order("created_at", { ascending: true });
+    const [pendingResult, membersResult] = await Promise.all([
+      supabase.from("profiles")
+        .select("id, full_name, email, created_at")
+        .eq("approval_status", "pending")
+        .order("created_at", { ascending: true }),
+      supabase.from("profiles")
+        .select("id, full_name, email")
+        .eq("approval_status", "approved")
+        .eq("role", "member")
+        .order("full_name", { ascending: true })
+    ]);
     if (generation !== authGeneration) return;
-    if (error) throw error;
-    state.pendingUsers = data;
+    if (pendingResult.error) throw pendingResult.error;
+    if (membersResult.error) throw membersResult.error;
+    state.pendingUsers = pendingResult.data;
+    state.approvedMembers = membersResult.data;
   } else {
     state.pendingUsers = [];
+    state.approvedMembers = [];
   }
   render();
 }
@@ -203,6 +214,7 @@ function render() {
   document.getElementById("top-avatar").textContent = initials(user.full_name);
   document.querySelectorAll(".admin-only").forEach((el) => el.classList.toggle("hidden", user.role !== "admin"));
   document.querySelectorAll(".member-only").forEach((el) => el.classList.toggle("hidden", user.role === "admin"));
+  document.getElementById("member-loans-count").textContent = state.approvedMembers.length;
   document.getElementById("applications-nav-label").textContent = user.role === "admin" ? "Loan applications" : "Apply for a loan";
   document.getElementById("application-count").textContent = state.applications.filter((application) => application.status === "pending").length;
   document.getElementById("application-count").classList.toggle("hidden", user.role !== "admin" || !state.applications.some((application) => application.status === "pending"));
@@ -221,6 +233,7 @@ function render() {
   document.getElementById("today-label").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }).toUpperCase();
   renderOverview();
   renderLoans();
+  renderMemberLoans();
   renderPayments();
   renderApprovals();
   renderApplications();
@@ -229,7 +242,8 @@ function render() {
 
 function renderReminder() {
   const banner = document.getElementById("reminder-banner");
-  const upcoming = state.loans.map((loan) => ({ loan, status: statusFor(loan) }))
+  const ownLoans = state.loans.filter((loan) => loan.user_id === state.user.id);
+  const upcoming = ownLoans.map((loan) => ({ loan, status: statusFor(loan) }))
     .filter(({ loan, status }) => loanState(loan).balance > 0 && (status.className === "overdue" || status.className === "due-soon"))
     .sort((a, b) => a.loan.due_date.localeCompare(b.loan.due_date));
   if (!upcoming.length) {
@@ -243,43 +257,85 @@ function renderReminder() {
 }
 
 function renderOverview() {
-  const balances = state.loans.map((loan) => loanState(loan));
+  const ownLoans = state.loans.filter((loan) => loan.user_id === state.user.id);
+  const ownPayments = state.payments.filter((payment) => payment.user_id === state.user.id);
+  const balances = ownLoans.map((loan) => loanState(loan));
   const totalBalance = balances.reduce((sum, result) => sum + result.balance, 0);
   const interest = balances.reduce((sum, result) => sum + result.accruedInterest, 0);
-  const paid = state.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-  const next = state.loans.filter((loan) => loanState(loan).balance > 0).sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
+  const paid = ownPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const next = ownLoans.filter((loan) => loanState(loan).balance > 0).sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
   document.getElementById("metric-balance").textContent = currency.format(totalBalance);
   document.getElementById("metric-interest").textContent = currency.format(interest);
   document.getElementById("metric-paid").textContent = currency.format(paid);
   document.getElementById("metric-due").textContent = next ? currency.format(next.monthly_payment) : currency.format(0);
   document.getElementById("metric-due-date").textContent = next ? `Due ${dateLabel(next.due_date)} · ${next.name}` : "No upcoming payments";
 
-  document.getElementById("overview-loans").innerHTML = state.loans.length ? state.loans.slice(0, 4).map((loan) => {
+  document.getElementById("overview-loans").innerHTML = ownLoans.length ? ownLoans.slice(0, 4).map((loan) => {
     const result = loanState(loan);
     const progress = paymentProgress(loan);
     return `<div class="loan-row"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><div class="progress-wrap"><div class="progress-label"><span>Repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-balance"><strong>${currency.format(result.balance)}</strong><span>remaining</span></div></div>`;
-  }).join("") : emptyState("◫", "Your first loan starts here.", "Add a loan to see balances and repayment progress.");
+  }).join("") : emptyState("◫", "Your first loan starts here.", state.profile.role === "admin"
+    ? "Add a loan to see balances and repayment progress."
+    : "Apply for a loan to see balances and repayment progress after approval.");
 
-  const upcoming = state.loans.filter((loan) => loanState(loan).balance > 0).sort((a, b) => a.due_date.localeCompare(b.due_date)).slice(0, 3);
+  const upcoming = ownLoans.filter((loan) => loanState(loan).balance > 0).sort((a, b) => a.due_date.localeCompare(b.due_date)).slice(0, 3);
   document.getElementById("upcoming-list").innerHTML = upcoming.length ? upcoming.map((loan) => {
     const due = dayStart(loan.due_date);
     const status = statusFor(loan);
     return `<div class="upcoming-item"><div class="date-block"><span>${due.toLocaleDateString("en-US", { month: "short" })}</span><strong>${due.getDate()}</strong></div><div class="upcoming-info"><strong>${escapeHtml(loan.name)}</strong><span class="status-pill ${status.className}">${status.label}</span></div><span class="upcoming-amount">${currency.format(loan.monthly_payment)}</span></div>`;
   }).join("") : emptyState("◷", "All clear.", "Add a loan to see upcoming due dates.");
 
-  const recent = state.payments.slice().sort((a, b) => b.payment_date.localeCompare(a.payment_date)).slice(0, 4);
+  const recent = ownPayments.slice().sort((a, b) => b.payment_date.localeCompare(a.payment_date)).slice(0, 4);
   document.getElementById("recent-payments").innerHTML = paymentTable(recent);
 }
 
 function renderLoans() {
-  document.getElementById("loan-count-label").textContent = `${state.loans.length} loan${state.loans.length === 1 ? "" : "s"} · Interest estimates update daily`;
-  document.getElementById("all-loans").innerHTML = state.loans.length ? state.loans.map((loan) => {
+  const ownLoans = state.loans.filter((loan) => loan.user_id === state.user.id);
+  document.getElementById("loan-count-label").textContent = `${ownLoans.length} loan${ownLoans.length === 1 ? "" : "s"} · Interest estimates update daily`;
+  document.getElementById("all-loans").innerHTML = ownLoans.length ? ownLoans.map((loan) => {
     const result = loanState(loan);
     const status = statusFor(loan);
     const progress = paymentProgress(loan);
     const paid = totalPaid(loan.id);
     return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span><span>${fullCurrency.format(loan.monthly_payment)} / month</span></div><div class="loan-card-actions"><button class="small-action" data-action="edit-due" data-id="${loan.id}">Update due date</button><button class="small-action" data-action="add-payment" data-id="${loan.id}">Record payment</button></div></article>`;
-  }).join("") : emptyState("◫", "No loans to show yet.", "Add your first loan to keep the balance and due date in one place.");
+  }).join("") : emptyState("◫", "No loans to show yet.", state.profile.role === "admin"
+    ? "Add your first loan to keep the balance and due date in one place."
+    : "Apply for a loan to start tracking your balance and due dates.");
+}
+
+function renderMemberLoans() {
+  const container = document.getElementById("member-loans-list");
+  if (state.profile?.role !== "admin") {
+    container.innerHTML = "";
+    return;
+  }
+
+  const members = state.approvedMembers.map((member) => ({
+    member,
+    loans: state.loans.filter((loan) => loan.user_id === member.id && loanState(loan).balance > 0)
+  }));
+  const activeCount = members.reduce((count, item) => count + item.loans.length, 0);
+  document.getElementById("member-loan-count").textContent =
+    `${activeCount} active loan${activeCount === 1 ? "" : "s"} across ${members.length} approved member${members.length === 1 ? "" : "s"}`;
+
+  if (!members.length) {
+    container.innerHTML = emptyState("▤", "No approved members yet.", "Approved external members and their active loans will appear here.");
+    return;
+  }
+
+  container.innerHTML = members.map(({ member, loans }) => {
+    const loanCards = loans.length ? loans.map((loan) => {
+      const result = loanState(loan);
+      const payments = state.payments
+        .filter((payment) => payment.loan_id === loan.id)
+        .sort((a, b) => b.payment_date.localeCompare(a.payment_date));
+      const lastPayment = payments[0];
+      const status = statusFor(loan);
+      return `<article class="member-loan-card"><div class="member-loan-heading"><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="member-loan-balance">${fullCurrency.format(result.balance)} <span>remaining</span></div><div class="member-loan-details"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued interest</span><span>${fullCurrency.format(loan.monthly_payment)} monthly due</span><span>Due ${dateLabel(loan.due_date)}</span></div><div class="member-loan-payment"><span>Total repayments: <strong>${fullCurrency.format(totalPaid(loan.id))}</strong></span><span>${lastPayment ? `Last paid ${dateLabel(lastPayment.payment_date)} · ${fullCurrency.format(lastPayment.amount)}` : "No payments recorded"}</span></div></article>`;
+    }).join("") : emptyState("✓", "No active loans.", "This member currently has no loans with an outstanding balance.");
+
+    return `<section class="member-loan-group"><div class="member-group-heading"><div class="avatar">${initials(member.full_name)}</div><div><strong>${escapeHtml(member.full_name)}</strong><span>${escapeHtml(member.email)}</span></div><span class="member-loan-total">${loans.length} active</span></div><div class="member-loan-cards">${loanCards}</div></section>`;
+  }).join("");
 }
 
 function paymentTable(payments) {
@@ -293,9 +349,10 @@ function paymentTable(payments) {
 }
 
 function renderPayments() {
-  document.getElementById("payments-total").textContent = currency.format(state.payments.reduce((sum, payment) => sum + Number(payment.amount), 0));
-  document.getElementById("payments-count").textContent = state.payments.length;
-  document.getElementById("all-payments").innerHTML = paymentTable(state.payments);
+  const ownPayments = state.payments.filter((payment) => payment.user_id === state.user.id);
+  document.getElementById("payments-total").textContent = currency.format(ownPayments.reduce((sum, payment) => sum + Number(payment.amount), 0));
+  document.getElementById("payments-count").textContent = ownPayments.length;
+  document.getElementById("all-payments").innerHTML = paymentTable(ownPayments);
 }
 
 function renderApprovals() {
@@ -337,18 +394,19 @@ function emptyState(symbol, title, description) {
 
 async function showView(view) {
   if (view === "approvals" && state.profile?.role !== "admin") return;
+  if (view === "member-loans" && state.profile?.role !== "admin") return;
   if (view === "applications" && !state.profile) return;
   document.querySelectorAll(".view").forEach((section) => section.classList.toggle("active", section.id === `view-${view}`));
   document.querySelectorAll(".nav-link[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   const active = document.getElementById(`view-${view}`);
   if (active) document.getElementById("breadcrumb-current").textContent = active.querySelector("h1")?.textContent || "Overview";
   document.getElementById("sidebar").classList.remove("open");
-  if (view === "applications" && state.profile.role === "admin") {
+  if (["applications", "member-loans"].includes(view) && state.profile.role === "admin") {
     try {
       await refreshDashboard();
     } catch (error) {
-      console.error("Could not refresh loan applications.", error);
-      showToast(`Could not refresh applications: ${error.message}`);
+      console.error("Could not refresh administrator records.", error);
+      showToast(`Could not refresh records: ${error.message}`);
     }
   }
 }
@@ -482,11 +540,12 @@ function openLoanApplicationModal() {
 }
 
 function openPaymentModal(loanId = "") {
-  if (!state.loans.length) {
-    showToast("Add a loan before recording a payment.");
+  const ownLoans = state.loans.filter((loan) => loan.user_id === state.user.id);
+  if (!ownLoans.length) {
+    showToast(state.profile.role === "admin" ? "Add a loan before recording a payment." : "You need an approved loan before recording a payment.");
     return;
   }
-  const options = state.loans.map((loan) => `<option value="${loan.id}" ${loan.id === loanId ? "selected" : ""}>${escapeHtml(loan.name)} · ${escapeHtml(loan.lender)}</option>`).join("");
+  const options = ownLoans.map((loan) => `<option value="${loan.id}" ${loan.id === loanId ? "selected" : ""}>${escapeHtml(loan.name)} · ${escapeHtml(loan.lender)}</option>`).join("");
   const today = todayISO();
   openModal("Record a payment", "Add a repayment to update your loan balance.", `
     <label for="payment-loan" class="field-full">Loan</label><select id="payment-loan" name="loanId" class="field-full">${options}</select>
