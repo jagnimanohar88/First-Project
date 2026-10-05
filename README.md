@@ -1,6 +1,6 @@
 # LoanLedger
 
-LoanLedger tracks loan balances, estimated interest, repayments, and due dates. Sign-ups require administrator approval. Members can submit loan applications for administrator approval; an approved application creates the loan on the member's account. Supabase Auth and a shared Postgres database make account requests, loan applications, and loan records available across browsers and devices.
+LoanLedger tracks loan balances, estimated interest, repayments, and due dates. Sign-ups require administrator approval. Members can submit loan applications for administrator approval; an approved application creates the loan on the member's account. Members can also request approval for interest-only or regular payments. Supabase Auth and a shared Postgres database make account requests, loan applications, payment requests, and loan records available across browsers and devices.
 
 ## Set up Supabase
 
@@ -33,12 +33,12 @@ LoanLedger tracks loan balances, estimated interest, repayments, and due dates. 
 3. Sign in to LoanLedger again. The **Access requests** section lists sign-ups from every browser. Approve or reject a request there; approved users can sign in from their own devices. Approval does not send an email, so let the user know they can sign in.
 4. Approved members can use **Apply for a loan** to submit the requested amount and repayment term in months. Interest, monthly payment, and first due date are set by the administrator during review. In **Loan applications**, approving creates the loan with those final terms in the member's account; rejecting records the decision without adding a loan. Members cannot create tracked loans directly or approve their own applications.
 5. Administrators can open **Member loans** to see approved external members, their active loan balances, due dates, estimated interest, and repayment history. Members continue to see only their own loans and payments.
-6. External members can record repayments, but only an administrator can change a loan's due date.
+6. External members can submit an interest-only payment request (which leaves principal unchanged) or a regular payment request (which pays accrued interest first and reduces principal with any remainder). Find **Payment requests** in the administrator workspace to approve a verified payment or reject it. A request affects loan balances and payment history only after approval; members can see request statuses under **Payments**. Only an administrator can change a loan's due date.
 
 Do not make an arbitrary user an administrator. The app never lets users grant themselves admin access; initial administrator setup is an explicit database-owner action.
 
-If you already ran `supabase/schema.sql`, run the updated file again in the Supabase SQL Editor to add the application workflow, administrator loan/payment tracking, and the corresponding row-level security policies. This migration makes new applications store a requested term and leaves final interest, payment, and due-date fields for administrator approval.
+If you already ran `supabase/schema.sql`, run the updated file again in the Supabase SQL Editor to add the application and payment-request workflows, administrator loan/payment tracking, and the corresponding row-level security policies. This migration makes new applications store a requested term and leaves final interest, payment, and due-date fields for administrator approval. Members can no longer record a payment directly; approved payment requests are recorded by the administrator review function.
 
 ## Loan and payment calculations
 
-Interest and balances are estimates: interest accrues daily at the entered annual rate on outstanding principal, with each recorded payment applied to accrued interest first and any remainder reducing principal. Loan balances and payment history show principal and interest separately for members and administrators, so interest after a principal reduction is calculated on the reduced balance. Due-date reminders appear in the dashboard; the prototype does not send email or push reminders. This is not financial advice.
+Interest and balances are estimates: interest accrues daily at the entered annual rate on outstanding principal. Approved interest-only payments reduce accrued interest without reducing principal; regular payments are applied to accrued interest first, with any remainder reducing principal. Loan balances and payment history show principal and interest separately for members and administrators, so interest after a principal reduction is calculated on the reduced balance. Due-date reminders appear in the dashboard; the prototype does not send email or push reminders. This is not financial advice.
