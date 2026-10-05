@@ -300,7 +300,7 @@ function renderLoans() {
     const dueDateAction = state.profile.role === "admin"
       ? `<button class="small-action" data-action="edit-due" data-id="${loan.id}">Update due date</button>`
       : "";
-    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span><span>${fullCurrency.format(loan.monthly_payment)} / month</span></div><div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">Record payment</button></div></article>`;
+    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span><span>${fullCurrency.format(loan.monthly_payment)} / month</span></div>${loan.term_months ? `<div class="loan-card-meta"><span>${loan.term_months} month repayment term</span></div>` : ""}<div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">Record payment</button></div></article>`;
   }).join("") : emptyState("◫", "No loans to show yet.", state.profile.role === "admin"
     ? "Add your first loan to keep the balance and due date in one place."
     : "Apply for a loan to start tracking your balance and due dates.");
@@ -334,7 +334,8 @@ function renderMemberLoans() {
         .sort((a, b) => b.payment_date.localeCompare(a.payment_date));
       const lastPayment = payments[0];
       const status = statusFor(loan);
-      return `<article class="member-loan-card"><div class="member-loan-heading"><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="member-loan-balance">${fullCurrency.format(result.balance)} <span>remaining</span></div><div class="member-loan-details"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued interest</span><span>${fullCurrency.format(loan.monthly_payment)} monthly due</span><span>Due ${dateLabel(loan.due_date)}</span></div><div class="member-loan-payment"><span>Total repayments: <strong>${fullCurrency.format(totalPaid(loan.id))}</strong></span><span>${lastPayment ? `Last paid ${dateLabel(lastPayment.payment_date)} · ${fullCurrency.format(lastPayment.amount)}` : "No payments recorded"}</span></div></article>`;
+      const term = loan.term_months ? `<span>${loan.term_months} month repayment term</span>` : "";
+      return `<article class="member-loan-card"><div class="member-loan-heading"><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="member-loan-balance">${fullCurrency.format(result.balance)} <span>remaining</span></div><div class="member-loan-details"><span>${Number(loan.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(result.accruedInterest)} accrued interest</span><span>${fullCurrency.format(loan.monthly_payment)} monthly due</span><span>Due ${dateLabel(loan.due_date)}</span>${term}</div><div class="member-loan-payment"><span>Total repayments: <strong>${fullCurrency.format(totalPaid(loan.id))}</strong></span><span>${lastPayment ? `Last paid ${dateLabel(lastPayment.payment_date)} · ${fullCurrency.format(lastPayment.amount)}` : "No payments recorded"}</span></div></article>`;
     }).join("") : emptyState("✓", "No active loans.", "This member currently has no loans with an outstanding balance.");
 
     return `<section class="member-loan-group"><div class="member-group-heading"><div class="avatar">${initials(member.full_name)}</div><div><strong>${escapeHtml(member.full_name)}</strong><span>${escapeHtml(member.email)}</span></div><span class="member-loan-total">${loans.length} active</span></div><div class="member-loan-cards">${loanCards}</div></section>`;
@@ -381,13 +382,16 @@ function renderApplications() {
     const profile = application.profiles;
     const isAdmin = state.profile.role === "admin";
     const statusLabel = application.status[0].toUpperCase() + application.status.slice(1);
+    const requestedTerm = Number.isInteger(Number(application.term_months)) && Number(application.term_months) > 0
+      ? `${application.term_months} month${Number(application.term_months) === 1 ? "" : "s"} requested`
+      : "Requested term not recorded";
     const actions = isAdmin && application.status === "pending"
       ? `<div class="approval-actions"><button class="reject-button" data-action="reject-loan-application" data-id="${application.id}">Reject</button><button class="approve-button" data-action="approve-loan-application" data-id="${application.id}">Approve loan</button></div>`
       : "";
     const applicant = isAdmin && profile
       ? `<div class="application-applicant">${escapeHtml(profile.full_name)} · ${escapeHtml(profile.email)}</div>`
       : "";
-    return `<article class="application-row"><div class="application-main"><div class="application-title"><strong>${escapeHtml(application.name)}</strong><span class="status-pill ${application.status === "pending" ? "due-soon" : application.status === "rejected" ? "overdue" : ""}">${statusLabel}</span></div>${applicant}<div class="application-lender">${escapeHtml(application.lender)} · Requested ${dateLabel(application.created_at.slice(0, 10))}</div><div class="application-terms"><span>${fullCurrency.format(application.requested_amount)} requested</span><span>${Number(application.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(application.monthly_payment)} / month</span><span>First due ${dateLabel(application.due_date)}</span></div></div>${actions}</article>`;
+    return `<article class="application-row"><div class="application-main"><div class="application-title"><strong>${escapeHtml(application.name)}</strong><span class="status-pill ${application.status === "pending" ? "due-soon" : application.status === "rejected" ? "overdue" : ""}">${statusLabel}</span></div>${applicant}<div class="application-lender">${escapeHtml(application.lender)} · Requested ${dateLabel(application.created_at.slice(0, 10))}</div><div class="application-terms"><span>${fullCurrency.format(application.requested_amount)} requested</span><span>${requestedTerm}</span></div>${isAdmin && application.status === "approved" && application.annual_rate !== null ? `<div class="application-terms"><span>Approved at ${Number(application.annual_rate).toFixed(2)}% annual interest</span><span>${fullCurrency.format(application.monthly_payment)} / month</span><span>First due ${dateLabel(application.due_date)}</span></div>` : ""}</div>${actions}</article>`;
   }).join("");
 }
 
@@ -513,32 +517,67 @@ function openLoanModal() {
 
 function openLoanApplicationModal() {
   if (state.profile?.role !== "member") return;
-  const today = todayISO();
   openModal("Apply for a loan", "Submit your requested terms for administrator review.", `
     <label for="application-name" class="field-full">Loan name</label><input id="application-name" name="name" class="field-full" placeholder="e.g. Home loan" required maxlength="55">
     <label for="application-lender" class="field-full">Lender</label><input id="application-lender" name="lender" class="field-full" placeholder="e.g. Your bank" required maxlength="55">
-    <label for="application-principal" class="field-half">Amount requested</label><label for="application-rate" class="field-half">Proposed annual interest (%)</label>
-    <input id="application-principal" name="principal" class="field-half" type="number" min="0.01" step="0.01" placeholder="15000" required><input id="application-rate" name="rate" class="field-half" type="number" min="0" max="100" step="0.01" placeholder="5.5" required>
-    <label for="application-payment" class="field-half">Proposed monthly payment</label><label for="application-date" class="field-half">Proposed first due date</label>
-    <input id="application-payment" name="payment" class="field-half" type="number" min="0.01" step="0.01" placeholder="350" required><input id="application-date" name="dueDate" class="field-half" type="date" min="${today}" required>
-    <label for="application-start" class="field-full">Proposed loan start date</label><input id="application-start" name="startDate" class="field-full" type="date" value="${today}" min="${today}" required>
-    <p class="field-hint">These are requested terms only. A loan is added to your account only if an administrator approves this application.</p>`, "Submit application", async (form) => {
+    <label for="application-principal" class="field-full">Amount requested</label><input id="application-principal" name="principal" class="field-full" type="number" min="0.01" step="0.01" placeholder="15000" required>
+    <label for="application-term" class="field-full">How many months to repay?</label><input id="application-term" name="termMonths" class="field-full" type="number" min="1" max="600" step="1" placeholder="e.g. 36" required>
+    <p class="field-hint">The administrator will set the approved interest rate, monthly payment, and first due date if your application is approved.</p>`, "Submit application", async (form) => {
     const application = {
       name: form.get("name").trim(),
       lender: form.get("lender").trim(),
       requested_amount: Number(form.get("principal")),
-      annual_rate: Number(form.get("rate")),
-      monthly_payment: Number(form.get("payment")),
-      due_date: form.get("dueDate"),
-      start_date: form.get("startDate")
+      term_months: Number(form.get("termMonths"))
     };
-    if (application.start_date < today || application.start_date > application.due_date) {
-      document.getElementById("modal-error").textContent = "Choose a loan start date today or later, before the first due date.";
+    if (!Number.isInteger(application.term_months) || application.term_months < 1 || application.term_months > 600) {
+      document.getElementById("modal-error").textContent = "Choose a repayment term between 1 and 600 months.";
       return false;
     }
     const { error } = await supabase.from("loan_applications").insert(application);
     if (error) throw error;
     return "Application submitted for administrator review.";
+  });
+}
+
+function openLoanApplicationReviewModal(applicationId) {
+  if (state.profile?.role !== "admin") return;
+  const application = state.applications.find((item) => item.id === applicationId && item.status === "pending");
+  if (!application) {
+    showToast("This application has already been reviewed.");
+    return;
+  }
+  const today = todayISO();
+  const requestedTerm = Number.isInteger(Number(application.term_months)) && Number(application.term_months) > 0
+    ? Number(application.term_months)
+    : null;
+  const termField = requestedTerm === null
+    ? `<label for="approved-term" class="field-full">Approved repayment term (months)</label><input id="approved-term" name="termMonths" class="field-full" type="number" min="1" max="600" step="1" required>`
+    : "";
+  const termDescription = requestedTerm === null ? "Set the final terms below." : `over ${requestedTerm} months. Set the final terms below.`;
+  openModal("Set approved loan terms", `Approve ${escapeHtml(application.name)} for ${fullCurrency.format(application.requested_amount)} ${termDescription}`, `
+    ${termField}
+    <label for="approved-rate" class="field-full">Approved annual interest (%)</label><input id="approved-rate" name="rate" class="field-full" type="number" min="0" max="100" step="0.01" placeholder="5.5" required>
+    <label for="approved-payment" class="field-full">Approved monthly payment</label><input id="approved-payment" name="payment" class="field-full" type="number" min="0.01" step="0.01" placeholder="350" required>
+    <label for="approved-due-date" class="field-full">First payment due date</label><input id="approved-due-date" name="dueDate" class="field-full" type="date" min="${today}" required>
+    <p class="field-hint">The loan starts on approval.${requestedTerm === null ? "" : ` The requested term is ${requestedTerm} months.`}</p>`, "Approve loan", async (form) => {
+    const rate = Number(form.get("rate"));
+    const payment = Number(form.get("payment"));
+    const dueDate = form.get("dueDate");
+    const termMonths = requestedTerm ?? Number(form.get("termMonths"));
+    if (!Number.isInteger(termMonths) || termMonths < 1 || termMonths > 600 || rate < 0 || rate > 100 || payment <= 0 || dueDate < today) {
+      document.getElementById("modal-error").textContent = "Enter a repayment term from 1 to 600 months, a valid interest rate, a positive payment, and a first due date today or later.";
+      return false;
+    }
+    const { error } = await supabase.rpc("review_loan_application", {
+      target_application_id: application.id,
+      approve: true,
+      approved_term_months: termMonths,
+      approved_annual_rate: rate,
+      approved_monthly_payment: payment,
+      approved_due_date: dueDate
+    });
+    if (error) throw error;
+    return "Loan application approved with the terms you entered.";
   });
 }
 
@@ -665,15 +704,23 @@ document.addEventListener("click", async (event) => {
   }
   if (["approve-loan-application", "reject-loan-application"].includes(action.dataset.action) && state.profile?.role === "admin") {
     const approve = action.dataset.action === "approve-loan-application";
+    if (approve) {
+      openLoanApplicationReviewModal(action.dataset.id);
+      return;
+    }
     action.disabled = true;
     try {
       const { error } = await supabase.rpc("review_loan_application", {
         target_application_id: action.dataset.id,
-        approve
+        approve: false,
+        approved_term_months: null,
+        approved_annual_rate: null,
+        approved_monthly_payment: null,
+        approved_due_date: null
       });
       if (error) throw error;
       await refreshDashboard();
-      showToast(approve ? "Loan application approved and added to the member's loans." : "Loan application rejected.");
+      showToast("Loan application rejected.");
     } catch (error) {
       console.error("Could not review loan application.", error);
       showToast(`Could not review application: ${error.message}`);
