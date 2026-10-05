@@ -21,4 +21,6 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
     - name: Check application JavaScript syntax
-      run: node --check app.js
+      run: node --input-type=module --check < app.js
+    - name: Check public Supabase configuration syntax
+      run: node --check supabase-config.js

@@ -61,6 +61,7 @@ button { cursor: pointer; }
 .demo-separator { margin: 0 3px; }
 .prototype-note { margin: 16px 0 0; color: #9ca49f; text-align: center; font-size: 10px; }
 .form-error { min-height: 14px; margin: 2px 0 0; color: #ae4545; font-size: 11px; }
+.form-error.notice-success { color: #39765c; line-height: 1.5; }
 
 .app-layout { min-height: 100vh; }
 .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 4; display: flex; flex-direction: column; width: 246px; padding: 26px 17px 16px; background: #142d2b; color: #f5f7f4; }
