@@ -267,15 +267,19 @@ function loanState(loan, asOf = new Date().toISOString().slice(0, 10)) {
   for (const payment of payments) {
     accruedInterest += interestForDays(loan, principal, daysBetween(cursor, payment.payment_date));
     cursor = payment.payment_date;
-    const interestPayment = payment.payment_type === "interest_only"
-      ? Number(payment.amount)
-      : Math.min(Math.max(0, accruedInterest), Number(payment.amount));
+    const interestPayment = payment.interest_amount !== null && payment.interest_amount !== undefined
+      ? Number(payment.interest_amount)
+      : payment.payment_type === "interest_only"
+        ? Number(payment.amount)
+        : Math.min(Math.max(0, accruedInterest), Number(payment.amount));
     accruedInterest -= interestPayment;
     paidInterest += interestPayment;
-    const principalPayment = payment.payment_type === "interest_only"
-      ? 0
-      : Math.min(principal, Number(payment.amount) - interestPayment);
-    principal -= principalPayment;
+    const principalPayment = payment.principal_amount !== null && payment.principal_amount !== undefined
+      ? Number(payment.principal_amount)
+      : payment.payment_type === "interest_only"
+        ? 0
+        : Math.min(principal, Number(payment.amount) - interestPayment);
+    principal = Math.max(0, principal - principalPayment);
     paymentBreakdown.push({ id: payment.id, interest: interestPayment, principal: principalPayment });
   }
   accruedInterest += interestForDays(loan, principal, daysBetween(cursor, asOf));
@@ -627,9 +631,11 @@ function renderPaymentRequests() {
   const rows = orderedRequests.map((request) => {
     const loan = findLoan(request.loan_id);
     const member = state.approvedMembers.find((approvedMember) => approvedMember.id === request.user_id);
-    const paymentType = request.payment_type === "interest_only"
-      ? "Interest-only payment"
-      : "Regular payment (interest first, then principal)";
+    const paymentType = request.interest_amount === null || request.interest_amount === undefined
+      ? `${request.payment_type === "interest_only" ? "Interest only" : "Regular payment"} · split calculated on approval`
+      : request.payment_type === "interest_only"
+        ? `Interest: ${fullCurrency.format(request.interest_amount)}`
+        : `Interest: ${fullCurrency.format(request.interest_amount)} · Principal: ${fullCurrency.format(request.principal_amount)}`;
     const statusClass = request.status === "pending" ? "due-soon" : request.status === "rejected" ? "overdue" : "";
     const actions = isAdmin && request.status === "pending"
       ? `<div class="approval-actions"><button class="reject-button" data-action="reject-payment-request" data-id="${request.id}">Reject</button><button class="approve-button" data-action="approve-payment-request" data-id="${request.id}">Approve as paid</button></div>`
@@ -637,7 +643,7 @@ function renderPaymentRequests() {
     const memberLabel = isAdmin && member
       ? `<div class="application-applicant">${escapeHtml(member.full_name)} · ${escapeHtml(member.email)}</div>`
       : "";
-    return `<article class="application-row"><div class="application-main"><div class="application-title"><strong>${escapeHtml(loan?.name || "Loan")}</strong><span class="status-pill ${statusClass}">${request.status[0].toUpperCase() + request.status.slice(1)}</span></div>${memberLabel}<div class="application-lender">${escapeHtml(loan?.lender || "")} · Paid ${dateLabel(request.payment_date)}</div><div class="application-terms"><span>${paymentType}</span><span>${fullCurrency.format(request.amount)}</span><span>${escapeHtml(request.note || "Repayment")}</span></div></div>${actions}</article>`;
+    return `<article class="application-row"><div class="application-main"><div class="application-title"><strong>${escapeHtml(loan?.name || "Loan")}</strong><span class="status-pill ${statusClass}">${request.status[0].toUpperCase() + request.status.slice(1)}</span></div>${memberLabel}<div class="application-lender">${escapeHtml(loan?.lender || "")} · Paid ${dateLabel(request.payment_date)}</div><div class="application-terms"><span>${paymentType}</span><span>Total: ${fullCurrency.format(request.amount)}</span><span>${escapeHtml(request.note || "Repayment")}</span></div></div>${actions}</article>`;
   }).join("");
   const empty = isAdmin
     ? emptyState("↗", "No payment requests.", "Member payment requests will appear here for your review.")
@@ -897,30 +903,42 @@ function openPaymentModal(loanId = "") {
     ? "Record a payment you have verified."
     : "Choose what the member paid. The payment will affect the loan only after an administrator approves it.", `
     <label for="payment-loan" class="field-full">Loan</label><select id="payment-loan" name="loanId" class="field-full">${options}</select>
-    <label for="payment-type" class="field-full">Payment type</label><select id="payment-type" name="paymentType" class="field-full"><option value="interest_only">Interest-only payment (does not reduce principal)</option><option value="regular">Regular payment (interest first, remainder reduces principal)</option></select>
-    <label for="payment-amount" class="field-half">Amount paid (INR)</label><label for="payment-date" class="field-half">Payment date</label>
-    <input id="payment-amount" name="amount" class="field-half" type="number" min="0.01" step="0.01" placeholder="350" required><input id="payment-date" name="date" class="field-half" type="date" value="${today}" max="${today}" required>
+    <label for="payment-type" class="field-full">Payment type</label><select id="payment-type" name="paymentType" class="field-full"><option value="interest_only">Pay interest only (principal stays unchanged)</option><option value="regular">Pay interest and principal (enter each amount)</option></select>
+    <label for="payment-interest" class="field-full">Interest amount (INR)</label><input id="payment-interest" name="interestAmount" class="field-full" type="number" min="0" step="0.01" placeholder="0" value="0" required>
+    <div id="payment-principal-fields" class="payment-principal-fields hidden"><label for="payment-principal" class="field-full">Principal amount (INR)</label><input id="payment-principal" name="principalAmount" class="field-full" type="number" min="0" step="0.01" placeholder="0" value="0"></div>
+    <label for="payment-date" class="field-full">Payment date</label><input id="payment-date" name="date" class="field-full" type="date" value="${today}" max="${today}" required>
+    <p class="field-hint field-full" id="payment-total">Total payment: ${fullCurrency.format(0)}</p>
     <label for="payment-note" class="field-full">Note (optional)</label><input id="payment-note" name="note" class="field-full" placeholder="e.g. Monthly repayment" maxlength="60">`, isAdmin ? "Record verified payment" : "Send payment request", async (form) => {
     const loan = findLoan(form.get("loanId"));
-    const amount = Number(form.get("amount"));
     const date = form.get("date");
     const paymentType = form.get("paymentType");
+    const interestAmount = Number(form.get("interestAmount"));
+    const principalAmount = paymentType === "interest_only" ? 0 : Number(form.get("principalAmount"));
+    const amount = Number((interestAmount + principalAmount).toFixed(2));
     if (!loan || date < loan.start_date || date > today) {
       document.getElementById("modal-error").textContent = "Choose a payment date between the loan start date and today.";
       return false;
     }
     const balance = loanState(loan, date);
-    if (paymentType === "interest_only" && amount > interestOnlyPaymentLimit(loan, balance) + 0.001) {
+    if (!Number.isFinite(interestAmount) || interestAmount < 0 || !Number.isFinite(principalAmount) || principalAmount < 0 || amount <= 0
+      || (paymentType === "interest_only" && interestAmount <= 0)
+      || (paymentType === "regular" && principalAmount <= 0)) {
+      document.getElementById("modal-error").textContent = "Enter a valid interest amount and, for combined payments, a positive principal amount.";
+      return false;
+    }
+    if (paymentType === "interest_only" && interestAmount > interestOnlyPaymentLimit(loan, balance) + 0.001) {
       document.getElementById("modal-error").textContent = `An interest-only payment cannot exceed this month's interest due of ${fullCurrency.format(interestOnlyPaymentLimit(loan, balance))}.`;
       return false;
     }
-    if (paymentType === "regular" && amount > balance.balance + 0.01) {
-      document.getElementById("modal-error").textContent = "The payment is greater than this loan’s estimated remaining balance on that date.";
+    if (paymentType === "regular" && (interestAmount > Math.max(0, balance.accruedInterest) + 0.01 || principalAmount > balance.principal + 0.001)) {
+      document.getElementById("modal-error").textContent = "The interest or principal amount is greater than the amount outstanding on that date.";
       return false;
     }
     const payment = {
       loan_id: loan.id,
       amount,
+      interest_amount: interestAmount,
+      principal_amount: principalAmount,
       payment_date: date,
       payment_type: paymentType,
       note: form.get("note").trim() || "Repayment"
@@ -931,6 +949,29 @@ function openPaymentModal(loanId = "") {
     if (error) throw error;
     return isAdmin ? "Payment recorded and balance updated." : "Payment request sent to the administrator for approval.";
   });
+  const paymentTypeInput = document.getElementById("payment-type");
+  const principalFields = document.getElementById("payment-principal-fields");
+  const principalInput = document.getElementById("payment-principal");
+  const interestInput = document.getElementById("payment-interest");
+  const totalLabel = document.getElementById("payment-total");
+  const updatePaymentFields = () => {
+    const isRegular = paymentTypeInput.value === "regular";
+    principalFields.classList.toggle("hidden", !isRegular);
+    principalInput.required = isRegular;
+    const selectedLoan = findLoan(document.getElementById("payment-loan").value);
+    const selectedDate = document.getElementById("payment-date").value;
+    const balance = selectedLoan && selectedDate ? loanState(selectedLoan, selectedDate) : null;
+    interestInput.max = isRegular && balance
+      ? String(Math.max(0, balance.accruedInterest))
+      : "";
+    totalLabel.textContent = `Total payment: ${fullCurrency.format(Math.max(0, Number(interestInput.value) || 0) + (isRegular ? Math.max(0, Number(principalInput.value) || 0) : 0))}`;
+  };
+  paymentTypeInput.addEventListener("change", updatePaymentFields);
+  document.getElementById("payment-loan").addEventListener("change", updatePaymentFields);
+  document.getElementById("payment-date").addEventListener("change", updatePaymentFields);
+  interestInput.addEventListener("input", updatePaymentFields);
+  principalInput.addEventListener("input", updatePaymentFields);
+  updatePaymentFields();
 }
 
 function openDueDateModal(loanId) {
