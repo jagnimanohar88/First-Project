@@ -35,6 +35,8 @@ create table if not exists public.payments (
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   loan_id uuid not null,
   amount numeric(14, 2) not null check (amount > 0),
+  interest_amount numeric(14, 2),
+  principal_amount numeric(14, 2),
   payment_date date not null default current_date check (payment_date <= current_date),
   payment_type text not null default 'regular' check (payment_type in ('interest_only', 'regular')),
   note text not null default 'Repayment' check (char_length(note) between 1 and 60),
@@ -48,6 +50,8 @@ create table if not exists public.payment_requests (
   user_id uuid not null default auth.uid(),
   loan_id uuid not null,
   amount numeric(14, 2) not null check (amount > 0),
+  interest_amount numeric(14, 2),
+  principal_amount numeric(14, 2),
   payment_date date not null default current_date check (payment_date <= current_date),
   payment_type text not null check (payment_type in ('interest_only', 'regular')),
   note text not null default 'Repayment' check (char_length(note) between 1 and 60),
@@ -107,9 +111,40 @@ alter table public.loans add constraint loans_term_months_check
 alter table public.loans alter column monthly_payment drop not null;
 
 alter table public.payments add column if not exists payment_type text not null default 'regular';
+alter table public.payments add column if not exists interest_amount numeric(14, 2);
+alter table public.payments add column if not exists principal_amount numeric(14, 2);
 alter table public.payments drop constraint if exists payments_payment_type_check;
 alter table public.payments add constraint payments_payment_type_check
   check (payment_type in ('interest_only', 'regular'));
+alter table public.payments drop constraint if exists payments_amount_split_check;
+alter table public.payments add constraint payments_amount_split_check
+  check (
+    (interest_amount is null and principal_amount is null)
+    or (
+      interest_amount is not null
+      and principal_amount is not null
+      and interest_amount >= 0
+      and principal_amount >= 0
+      and interest_amount + principal_amount = amount
+      and (payment_type <> 'interest_only' or principal_amount = 0)
+    )
+  );
+
+alter table public.payment_requests add column if not exists interest_amount numeric(14, 2);
+alter table public.payment_requests add column if not exists principal_amount numeric(14, 2);
+alter table public.payment_requests drop constraint if exists payment_requests_amount_split_check;
+alter table public.payment_requests add constraint payment_requests_amount_split_check
+  check (
+    (interest_amount is null and principal_amount is null)
+    or (
+      interest_amount is not null
+      and principal_amount is not null
+      and interest_amount >= 0
+      and principal_amount >= 0
+      and interest_amount + principal_amount = amount
+      and (payment_type <> 'interest_only' or principal_amount = 0)
+    )
+  );
 
 alter table public.loan_applications add column if not exists term_months integer;
 alter table public.loan_applications alter column term_months drop not null;
@@ -377,7 +412,7 @@ begin
     remaining_principal := loan_record.principal;
     cursor_date := loan_record.start_date;
     for prior_payment in
-      select amount, payment_date, payment_type
+      select amount, interest_amount, principal_amount, payment_date, payment_type
       from public.payments
       where loan_id = loan_record.id
         and user_id = loan_record.user_id
@@ -396,17 +431,22 @@ begin
           end
           * (prior_payment.payment_date - cursor_date)::numeric / 365;
       cursor_date := prior_payment.payment_date;
-      if prior_payment.payment_type = 'interest_only' then
-        accrued_interest := accrued_interest - prior_payment.amount;
-      else
-        interest_payment := least(greatest(0, accrued_interest), prior_payment.amount);
-        principal_payment := least(
-          remaining_principal,
-          greatest(0, prior_payment.amount - interest_payment)
-        );
-        accrued_interest := accrued_interest - interest_payment;
-        remaining_principal := greatest(0, remaining_principal - principal_payment);
-      end if;
+      interest_payment := coalesce(
+        prior_payment.interest_amount,
+        case
+          when prior_payment.payment_type = 'interest_only' then prior_payment.amount
+          else least(greatest(0, accrued_interest), prior_payment.amount)
+        end
+      );
+      principal_payment := coalesce(
+        prior_payment.principal_amount,
+        case
+          when prior_payment.payment_type = 'interest_only' then 0
+          else least(remaining_principal, greatest(0, prior_payment.amount - interest_payment))
+        end
+      );
+      accrued_interest := accrued_interest - interest_payment;
+      remaining_principal := greatest(0, remaining_principal - principal_payment);
     end loop;
 
     accrued_interest := accrued_interest
@@ -429,7 +469,7 @@ begin
     end;
 
     if payment_request.payment_type = 'interest_only'
-       and payment_request.amount > greatest(
+       and coalesce(payment_request.interest_amount, payment_request.amount) > greatest(
          round(greatest(0, accrued_interest), 2),
          monthly_interest_due - greatest(0, -accrued_interest)
        ) then
@@ -439,12 +479,23 @@ begin
        and payment_request.amount > remaining_balance + 0.01 then
       raise exception 'The requested payment is greater than the remaining loan balance on that date';
     end if;
+    if payment_request.payment_type = 'regular'
+       and payment_request.interest_amount > greatest(0, accrued_interest) + 0.01 then
+      raise exception 'The requested interest amount is greater than the interest due on that date';
+    end if;
+    if payment_request.principal_amount > remaining_principal + 0.001 then
+      raise exception 'The requested principal amount is greater than the principal remaining on that date';
+    end if;
 
-    insert into public.payments (user_id, loan_id, amount, payment_date, payment_type, note)
+    insert into public.payments (
+      user_id, loan_id, amount, interest_amount, principal_amount, payment_date, payment_type, note
+    )
     values (
       payment_request.user_id,
       payment_request.loan_id,
       payment_request.amount,
+      payment_request.interest_amount,
+      payment_request.principal_amount,
       payment_request.payment_date,
       payment_request.payment_type,
       payment_request.note
@@ -486,7 +537,7 @@ grant insert (user_id, name, lender, principal, annual_rate, monthly_payment, st
 grant delete on table public.loans to authenticated;
 grant update (due_date) on table public.loans to authenticated;
 grant select on table public.payments to authenticated;
-grant insert (user_id, loan_id, amount, payment_date, payment_type, note) on public.payments to authenticated;
+grant insert (user_id, loan_id, amount, interest_amount, principal_amount, payment_date, payment_type, note) on public.payments to authenticated;
 grant select, insert on table public.payment_requests to authenticated;
 grant select on table public.loan_applications to authenticated;
 grant insert (name, lender, requested_amount)
@@ -539,7 +590,12 @@ drop policy if exists "Approved members create their payments" on public.payment
 drop policy if exists "Administrators create their payments" on public.payments;
 create policy "Administrators create their payments"
   on public.payments for insert to authenticated
-  with check (user_id = (select auth.uid()) and (select public.is_admin()));
+  with check (
+    user_id = (select auth.uid())
+    and interest_amount is not null
+    and principal_amount is not null
+    and (select public.is_admin())
+  );
 
 drop policy if exists "Members read their payment requests and admins read all" on public.payment_requests;
 create policy "Members read their payment requests and admins read all"
@@ -557,6 +613,8 @@ create policy "Approved members submit payment requests"
     and status = 'pending'
     and reviewed_by is null
     and reviewed_at is null
+    and interest_amount is not null
+    and principal_amount is not null
     and (select public.is_approved())
   );
 

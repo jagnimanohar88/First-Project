@@ -251,6 +251,7 @@ button { cursor: pointer; }
 .modal-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 .modal-form label { grid-column: span 2; }
 .modal-form input, .modal-form select { height: 41px; font-size: 11px; }
+.payment-principal-fields { display: grid; grid-column: span 2; gap: 8px; }
 .modal-form .field-half { grid-column: span 1; }
 .modal-form .field-full { grid-column: span 2; }
 .modal-form .field-hint { grid-column: span 2; margin: -1px 0 4px; color: #929b95; font-size: 9px; line-height: 1.5; }
