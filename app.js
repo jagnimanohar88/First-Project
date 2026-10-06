@@ -56,7 +56,7 @@ const monthlyDueAmount = (loan, principal) => hasMonthlyInterest(loan)
   : Math.round(principal * Number(loan.annual_rate) / 12) / 100;
 const monthlyDueLabel = () => "Estimated monthly interest due";
 const interestDueAmount = (loan, result) => hasMonthlyInterest(loan)
-  ? Math.max(0, monthlyInterestAmountAt(loan, result.principal) - result.interestCredit)
+  ? monthlyInterestStatus(loan, result).amount
   : result.accruedInterest;
 function monthlyInterestStatus(loan, result, asOf = new Date().toISOString().slice(0, 10)) {
   const monthStart = `${asOf.slice(0, 7)}-01`;
@@ -78,14 +78,16 @@ function monthlyInterestStatus(loan, result, asOf = new Date().toISOString().sli
   const remaining = Math.max(0, Math.round((monthlyAmount - previousMonthState.interestCredit - interestPaidThisMonth) * 100) / 100);
   return {
     isPaid: monthlyAmount <= 0 || remaining <= 0.01,
-    amount: monthlyAmount <= 0 ? 0 : remaining <= 0.01 ? monthlyAmount : remaining
+    amount: remaining <= 0.01 ? 0 : remaining,
+    paidAmount: Math.max(0, Math.round((monthlyAmount - remaining) * 100) / 100)
   };
 }
 const monthlyInterestStatusMarkup = (summary) => {
   const label = summary.isPaid
-    ? summary.amount > 0 ? "Interest paid this month" : "No interest due this month"
+    ? summary.paidAmount > 0 ? "Interest paid this month" : "No interest due this month"
     : "Interest due this month";
-  return `<span class="${summary.isPaid ? "interest-paid" : "interest-due"}">${label}: ${fullCurrency.format(summary.amount)}</span>`;
+  const amount = summary.isPaid ? summary.paidAmount : summary.amount;
+  return `<span class="${summary.isPaid ? "interest-paid" : "interest-due"}">${label}: ${fullCurrency.format(amount)}</span>`;
 };
 const interestOnlyPaymentLimit = (loan, result) => Math.max(
   Math.round(result.accruedInterest * 100) / 100,
@@ -367,11 +369,9 @@ function renderOverview() {
   const balances = ownLoans.map((loan) => loanState(loan));
   const totalBalance = balances.reduce((sum, result) => sum + result.balance, 0);
   const interest = ownLoans.reduce((sum, loan) => sum + interestDueAmount(loan, loanState(loan)), 0);
-  const paid = ownPayments.reduce((sum, payment) => sum + Number(payment.amount), 0);
   const next = ownLoans.filter((loan) => loanState(loan).balance > 0).sort((a, b) => a.due_date.localeCompare(b.due_date))[0];
   document.getElementById("metric-balance").textContent = currency.format(totalBalance);
   document.getElementById("metric-interest").textContent = fullCurrency.format(interest);
-  document.getElementById("metric-paid").textContent = currency.format(paid);
   document.getElementById("metric-due").textContent = next ? fullCurrency.format(monthlyDueAmount(next, loanState(next).principal)) : fullCurrency.format(0);
   document.getElementById("metric-due-date").textContent = next
     ? `${monthlyDueLabel(next)} · Due ${dateLabel(next.due_date)} · ${next.name}`
