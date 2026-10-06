@@ -353,6 +353,12 @@ function renderLoans() {
     const status = statusFor(loan);
     const progress = paymentProgress(loan);
     const paid = totalPaid(loan.id);
+    const interestOnlyPaid = state.payments
+      .filter((payment) => payment.loan_id === loan.id && payment.payment_type === "interest_only")
+      .reduce((sum, payment) => sum + Number(payment.amount), 0);
+    const interestOnlySummary = interestOnlyPaid > 0
+      ? `<div class="loan-card-meta"><span>Interest-only payments: ${fullCurrency.format(interestOnlyPaid)} · principal unchanged</span></div>`
+      : "";
     const dueDateAction = state.profile.role === "admin"
       ? `<button class="small-action" data-action="edit-due" data-id="${loan.id}">Update due date</button>`
       : "";
@@ -362,7 +368,7 @@ function renderLoans() {
       : loan.monthly_interest_amount !== null && loan.monthly_interest_amount !== undefined
         ? "Monthly interest"
         : `${Number(loan.annual_rate).toFixed(2)}% annual interest`;
-    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>Approved amount: ${fullCurrency.format(loan.principal)}</span><span>Principal remaining: ${fullCurrency.format(result.principal)}</span></div><div class="loan-card-meta"><span>Interest due this month: ${fullCurrency.format(interestDueAmount(loan, result))}</span><span>${rateLabel}</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span>${loan.term_months ? `<span>${loan.term_months} month repayment term</span>` : ""}</div><div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">${paymentAction}</button></div></article>`;
+    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity"><span class="lender-icon ${iconClass(loan)}">${loan.color === "amber" ? "⌂" : loan.color === "blue" ? "▤" : "↗"}</span><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="loan-card-balance">${fullCurrency.format(result.balance)}</div><div class="loan-card-sub">estimated remaining balance</div><div class="loan-card-progress progress-wrap"><div class="progress-label"><span>${fullCurrency.format(paid)} repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-card-meta"><span>Approved amount: ${fullCurrency.format(loan.principal)}</span><span>Principal remaining: ${fullCurrency.format(result.principal)}</span></div>${interestOnlySummary}<div class="loan-card-meta"><span>Interest due this month: ${fullCurrency.format(interestDueAmount(loan, result))}</span><span>${rateLabel}</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(loan.due_date)}</span>${loan.term_months ? `<span>${loan.term_months} month repayment term</span>` : ""}</div><div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">${paymentAction}</button></div></article>`;
   }).join("") : emptyState("◫", "No loans to show yet.", state.profile.role === "admin"
     ? "Add your first loan to keep the balance and due date in one place."
     : "Apply for a loan to start tracking your balance and due dates.");
