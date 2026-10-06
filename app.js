@@ -431,12 +431,12 @@ function renderOverview() {
     : "Balances and progress at a glance";
   document.getElementById("metric-grid").classList.toggle("admin-overview-metrics", isAdmin);
   document.getElementById("metric-grid").classList.toggle("member-overview-metrics", !isAdmin);
-  document.getElementById("metric-next-card").classList.toggle("hidden", !isAdmin);
+  document.getElementById("metric-next-card").classList.remove("hidden");
   document.getElementById("metric-balance-label").textContent = isAdmin ? "Outstanding principal" : "Total remaining";
   document.getElementById("metric-balance-foot").textContent = isAdmin ? "Across approved members" : "Across all active loans";
-  document.getElementById("metric-interest-label").textContent = isAdmin ? "Interest received this month" : "Interest due this month";
-  document.getElementById("metric-interest-foot").textContent = isAdmin ? "From approved member payments" : "Estimated monthly interest";
-  document.getElementById("metric-due-label").textContent = isAdmin ? "Upcoming month interest" : "Next payment";
+  document.getElementById("metric-interest-label").textContent = "Interest paid this month";
+  document.getElementById("metric-interest-foot").textContent = isAdmin ? "From approved member payments" : "Actual interest portion of approved payments";
+  document.getElementById("metric-due-label").textContent = isAdmin ? "Upcoming member interest" : "Next month's interest";
   document.getElementById("upcoming-heading").textContent = isAdmin ? "Upcoming member interest" : "Coming up";
   document.getElementById("upcoming-description").textContent = isAdmin
     ? "Estimated interest by member and loan"
@@ -444,24 +444,17 @@ function renderOverview() {
   const ownPayments = state.payments.filter((payment) => payment.user_id === state.user.id);
   const balances = overviewLoans.map((loan) => loanState(loan));
   const totalBalance = balances.reduce((sum, result) => sum + (isAdmin ? result.principal : result.balance), 0);
-  const interest = isAdmin
-    ? memberLoans.reduce((sum, loan) => sum + interestReceivedThisMonth(loan), 0)
-    : ownLoans.reduce((sum, loan) => sum + interestDueAmount(loan, loanState(loan)), 0);
-  const next = overviewLoans
-    .filter((loan) => loanState(loan).balance > 0)
-    .map((loan) => ({ loan, status: statusFor(loan) }))
-    .sort((a, b) => a.status.dueDate.localeCompare(b.status.dueDate))[0];
+  const interest = (isAdmin ? memberLoans : ownLoans)
+    .reduce((sum, loan) => sum + interestReceivedThisMonth(loan), 0);
   document.getElementById("metric-balance").textContent = currency.format(totalBalance);
   document.getElementById("metric-interest").textContent = fullCurrency.format(interest);
-  const upcomingInterest = memberLoans
+  const upcomingInterest = (isAdmin ? memberLoans : ownLoans)
     .filter((loan) => loanState(loan).principal > 0)
     .reduce((sum, loan) => sum + monthlyDueAmount(loan, loanState(loan).principal), 0);
-  document.getElementById("metric-due").textContent = isAdmin
-    ? fullCurrency.format(upcomingInterest)
-    : next ? fullCurrency.format(nextPaymentAmount(next.loan, loanState(next.loan), monthlyInterestStatus(next.loan, loanState(next.loan)))) : fullCurrency.format(0);
-  document.getElementById("metric-due-date").textContent = next
-    ? isAdmin ? "Estimated across all active member loans" : `${monthlyDueLabel(next.loan)} · Due ${dateLabel(next.status.dueDate)} · ${next.loan.name}`
-    : isAdmin ? "No active member loans" : "No upcoming payments";
+  document.getElementById("metric-due").textContent = fullCurrency.format(upcomingInterest);
+  document.getElementById("metric-due-date").textContent = upcomingInterest > 0
+    ? isAdmin ? "Estimated across active member loans" : "Estimated from your remaining principal"
+    : isAdmin ? "No active member loan interest" : "No upcoming interest";
 
   document.getElementById("overview-loans").innerHTML = overviewLoans.length ? overviewLoans.map((loan) => {
     const result = loanState(loan);
@@ -537,7 +530,10 @@ function renderLoans() {
       : loan.monthly_interest_amount !== null && loan.monthly_interest_amount !== undefined
         ? "Monthly interest"
         : `${Number(loan.annual_rate).toFixed(2)}% annual interest`;
-    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity">${loanIconMarkup(loan)}<div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div>${balanceDisplay}${progressDisplay}${principalDetails ? `<div class="loan-card-meta">${principalDetails}</div>` : ""}${interestOnlySummary}<div class="loan-card-meta">${monthlyInterestStatusMarkup(interestStatus)}<span>${rateLabel}</span></div><div class="loan-card-meta"><span>Next due ${dateLabel(status.dueDate)}</span>${loan.term_months ? `<span>${loan.term_months} month repayment term</span>` : ""}</div><div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">${paymentAction}</button></div></article>`;
+    const interestDisplay = isAdmin
+      ? `<div class="loan-card-meta">${monthlyInterestStatusMarkup(interestStatus)}<span>${rateLabel}</span></div>`
+      : `<div class="loan-card-meta"><span class="interest-paid">Interest paid this month: ${fullCurrency.format(interestReceivedThisMonth(loan))}</span><span>${rateLabel}</span></div><div class="loan-card-meta"><span>Next month's interest estimate: ${fullCurrency.format(monthlyDueAmount(loan, result.principal))}</span><span>Based on remaining principal</span></div>`;
+    return `<article class="loan-card"><div class="loan-card-top"><div class="loan-identity">${loanIconMarkup(loan)}<div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><span class="status-pill ${status.className}">${status.label}</span></div>${balanceDisplay}${progressDisplay}${principalDetails ? `<div class="loan-card-meta">${principalDetails}</div>` : ""}${interestOnlySummary}${interestDisplay}<div class="loan-card-meta"><span>Next due ${dateLabel(status.dueDate)}</span>${loan.term_months ? `<span>${loan.term_months} month repayment term</span>` : ""}</div><div class="loan-card-actions">${dueDateAction}<button class="small-action" data-action="add-payment" data-id="${loan.id}">${paymentAction}</button></div></article>`;
   }).join("") : emptyState("◫", "No loans to show yet.", state.profile.role === "admin"
     ? "Add your first loan to keep the balance and due date in one place."
     : "Apply for a loan to start tracking your balance and due dates.");
