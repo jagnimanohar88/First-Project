@@ -669,7 +669,7 @@ function renderApplications() {
     const statusLabel = application.status[0].toUpperCase() + application.status.slice(1);
     const requestedTerm = Number.isInteger(Number(application.term_months)) && Number(application.term_months) > 0
       ? `${application.term_months} month${Number(application.term_months) === 1 ? "" : "s"} requested`
-      : "Requested term not recorded";
+      : "";
     const actions = isAdmin && application.status === "pending"
       ? `<div class="approval-actions"><button class="reject-button" data-action="reject-loan-application" data-id="${application.id}">Reject</button><button class="approve-button" data-action="approve-loan-application" data-id="${application.id}">Approve loan</button></div>`
       : "";
@@ -683,7 +683,7 @@ function renderApplications() {
       : application.annual_rate !== null
         ? `<div class="application-terms"><span>${fullCurrency.format(application.requested_amount)} approved</span><span>${Number(application.annual_rate).toFixed(2)}% annual interest</span><span>First due ${dateLabel(application.due_date)}</span></div>`
         : "";
-    return `<article class="application-row"><div class="application-main"><div class="application-title"><strong>${escapeHtml(application.name)}</strong><span class="status-pill ${application.status === "pending" ? "due-soon" : application.status === "rejected" ? "overdue" : ""}">${statusLabel}</span></div>${applicant}<div class="application-lender">${escapeHtml(application.lender)} · Requested ${dateLabel(application.created_at.slice(0, 10))}</div><div class="application-terms"><span>${fullCurrency.format(application.requested_amount)} requested</span><span>${requestedTerm}</span></div>${isAdmin && application.status === "approved" ? approvedTerms : ""}</div>${actions}</article>`;
+    return `<article class="application-row"><div class="application-main"><div class="application-title"><strong>${escapeHtml(application.name)}</strong><span class="status-pill ${application.status === "pending" ? "due-soon" : application.status === "rejected" ? "overdue" : ""}">${statusLabel}</span></div>${applicant}<div class="application-lender">${escapeHtml(application.lender)} · Requested ${dateLabel(application.created_at.slice(0, 10))}</div><div class="application-terms"><span>${fullCurrency.format(application.requested_amount)} requested</span>${requestedTerm ? `<span>${requestedTerm}</span>` : ""}</div>${isAdmin && application.status === "approved" ? approvedTerms : ""}</div>${actions}</article>`;
   }).join("");
 }
 
@@ -693,6 +693,7 @@ function emptyState(symbol, title, description) {
 
 async function showView(view) {
   if (view === "loans" && state.profile?.role === "admin") return;
+  if (view === "payments" && state.profile?.role !== "member") return;
   if (view === "approvals" && state.profile?.role !== "admin") return;
   if (view === "member-loans" && state.profile?.role !== "admin") return;
   if (view === "payment-requests" && state.profile?.role !== "admin") return;
@@ -815,18 +816,12 @@ function openLoanApplicationModal() {
     <label for="application-name" class="field-full">Loan name</label><input id="application-name" name="name" class="field-full" placeholder="e.g. Home loan" required maxlength="55">
     <label for="application-lender" class="field-full">Lender</label><input id="application-lender" name="lender" class="field-full" placeholder="e.g. Your bank" required maxlength="55">
     <label for="application-principal" class="field-full">Amount requested (INR)</label><input id="application-principal" name="principal" class="field-full" type="number" min="0.01" step="0.01" placeholder="15000" required>
-    <label for="application-term" class="field-full">How many months to repay?</label><input id="application-term" name="termMonths" class="field-full" type="number" min="1" max="600" step="1" placeholder="e.g. 36" required>
     <p class="field-hint">The administrator will set the approved amount, monthly interest rate, and first due date if your application is approved.</p>`, "Submit application", async (form) => {
     const application = {
       name: form.get("name").trim(),
       lender: form.get("lender").trim(),
-      requested_amount: Number(form.get("principal")),
-      term_months: Number(form.get("termMonths"))
+      requested_amount: Number(form.get("principal"))
     };
-    if (!Number.isInteger(application.term_months) || application.term_months < 1 || application.term_months > 600) {
-      document.getElementById("modal-error").textContent = "Choose a repayment term between 1 and 600 months.";
-      return false;
-    }
     const { error } = await supabase.from("loan_applications").insert(application);
     if (error) throw error;
     return "Application submitted for administrator review.";
