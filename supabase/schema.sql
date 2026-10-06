@@ -380,7 +380,6 @@ declare
   interest_payment numeric;
   principal_payment numeric;
   cursor_date date;
-  remaining_balance numeric;
   monthly_interest_due numeric;
 begin
   if not public.is_admin() then
@@ -459,7 +458,6 @@ begin
           else remaining_principal * loan_record.annual_rate / 100
         end
         * (payment_request.payment_date - cursor_date)::numeric / 365;
-    remaining_balance := remaining_principal + greatest(0, accrued_interest);
     monthly_interest_due := case
       when loan_record.monthly_interest_rate is not null
         then round(remaining_principal * loan_record.monthly_interest_rate / 100, 2)
@@ -476,11 +474,10 @@ begin
       raise exception 'The requested interest-only payment is greater than this month''s interest due';
     end if;
     if payment_request.payment_type = 'regular'
-       and payment_request.amount > remaining_balance + 0.01 then
-      raise exception 'The requested payment is greater than the remaining loan balance on that date';
-    end if;
-    if payment_request.payment_type = 'regular'
-       and payment_request.interest_amount > greatest(0, accrued_interest) + 0.01 then
+       and payment_request.interest_amount > greatest(
+         round(greatest(0, accrued_interest), 2),
+         monthly_interest_due - greatest(0, -accrued_interest)
+       ) + 0.01 then
       raise exception 'The requested interest amount is greater than the interest due on that date';
     end if;
     if payment_request.principal_amount > remaining_principal + 0.001 then

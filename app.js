@@ -926,12 +926,12 @@ function openPaymentModal(loanId = "") {
       document.getElementById("modal-error").textContent = "Enter a valid interest amount and, for combined payments, a positive principal amount.";
       return false;
     }
-    if (paymentType === "interest_only" && interestAmount > interestOnlyPaymentLimit(loan, balance) + 0.001) {
-      document.getElementById("modal-error").textContent = `An interest-only payment cannot exceed this month's interest due of ${fullCurrency.format(interestOnlyPaymentLimit(loan, balance))}.`;
+    if (interestAmount > interestOnlyPaymentLimit(loan, balance) + 0.001) {
+      document.getElementById("modal-error").textContent = `The interest amount cannot exceed this month's interest due of ${fullCurrency.format(interestOnlyPaymentLimit(loan, balance))}.`;
       return false;
     }
-    if (paymentType === "regular" && (interestAmount > Math.max(0, balance.accruedInterest) + 0.01 || principalAmount > balance.principal + 0.001)) {
-      document.getElementById("modal-error").textContent = "The interest or principal amount is greater than the amount outstanding on that date.";
+    if (paymentType === "regular" && principalAmount > balance.principal + 0.001) {
+      document.getElementById("modal-error").textContent = "The principal amount is greater than the principal remaining on that date.";
       return false;
     }
     const payment = {
@@ -961,8 +961,8 @@ function openPaymentModal(loanId = "") {
     const selectedLoan = findLoan(document.getElementById("payment-loan").value);
     const selectedDate = document.getElementById("payment-date").value;
     const balance = selectedLoan && selectedDate ? loanState(selectedLoan, selectedDate) : null;
-    interestInput.max = isRegular && balance
-      ? String(Math.max(0, balance.accruedInterest))
+    interestInput.max = balance
+      ? String(interestOnlyPaymentLimit(selectedLoan, balance))
       : "";
     totalLabel.textContent = `Total payment: ${fullCurrency.format(Math.max(0, Number(interestInput.value) || 0) + (isRegular ? Math.max(0, Number(principalInput.value) || 0) : 0))}`;
   };
