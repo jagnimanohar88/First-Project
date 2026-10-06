@@ -146,6 +146,8 @@ alter table public.payment_requests add constraint payment_requests_amount_split
     )
   );
 
+alter table public.loans add column if not exists loan_application_id uuid;
+
 alter table public.loan_applications add column if not exists term_months integer;
 alter table public.loan_applications alter column term_months drop not null;
 alter table public.loan_applications add column if not exists approved_amount numeric(14, 2);
@@ -167,6 +169,41 @@ alter table public.loan_applications alter column due_date drop not null;
 alter table public.loan_applications drop constraint if exists loan_applications_term_months_check;
 alter table public.loan_applications add constraint loan_applications_term_months_check
   check (term_months is null or term_months between 1 and 600);
+
+with matching_loans as (
+  select
+    loans.id as loan_id,
+    loan_applications.id as application_id,
+    count(*) over (partition by loans.id) as loan_match_count,
+    count(*) over (partition by loan_applications.id) as application_match_count
+  from public.loans as loans
+  join public.loan_applications as loan_applications
+    on loan_applications.user_id = loans.user_id
+    and loan_applications.name = loans.name
+    and loan_applications.lender = loans.lender
+    and coalesce(loan_applications.approved_amount, loan_applications.requested_amount) = loans.principal
+    and (loan_applications.start_date is null or loan_applications.start_date = loans.start_date)
+    and not exists (
+      select 1
+      from public.loans as linked_loans
+      where linked_loans.loan_application_id = loan_applications.id
+    )
+  where loan_applications.status = 'approved'
+    and loans.loan_application_id is null
+)
+update public.loans as loans
+set loan_application_id = matching_loans.application_id
+from matching_loans
+where loans.id = matching_loans.loan_id
+  and matching_loans.loan_match_count = 1
+  and matching_loans.application_match_count = 1;
+
+create unique index if not exists loans_loan_application_id_unique
+  on public.loans (loan_application_id)
+  where loan_application_id is not null;
+alter table public.loans drop constraint if exists loans_loan_application_id_fkey;
+alter table public.loans add constraint loans_loan_application_id_fkey
+  foreign key (loan_application_id) references public.loan_applications (id) on delete set null;
 
 create index if not exists loans_user_id_idx on public.loans (user_id);
 create index if not exists payments_user_id_date_idx on public.payments (user_id, payment_date desc);
@@ -326,7 +363,7 @@ begin
       round(approved_loan_amount * approved_monthly_interest_rate / 100, 2);
 
     insert into public.loans (
-      user_id, name, lender, principal, annual_rate, monthly_interest_rate,
+      user_id, name, lender, principal, annual_rate, monthly_interest_rate, loan_application_id,
       monthly_interest_amount, monthly_payment, start_date, due_date, term_months
     ) values (
       loan_request.user_id,
@@ -335,6 +372,7 @@ begin
       approved_loan_amount,
       0,
       approved_monthly_interest_rate,
+      loan_request.id,
       approved_monthly_interest_amount,
       null,
       current_date,
