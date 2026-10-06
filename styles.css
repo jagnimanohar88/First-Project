@@ -180,11 +180,13 @@ button { cursor: pointer; }
 .loan-card-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid #eff1ee; }
 .member-loan-list { display: grid; gap: 13px; margin-top: 17px; }
 .member-loan-group { padding: 15px; border: 1px solid #edf0ec; border-radius: 9px; }
-.member-group-heading { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid #eff1ee; }
+.member-group-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid #eff1ee; }
 .member-group-heading > div:nth-child(2) { display: grid; min-width: 0; gap: 4px; }
 .member-group-heading strong { overflow: hidden; color: #34443b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .member-group-heading span { overflow: hidden; color: #929b95; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .member-group-heading .member-loan-total { margin-left: auto; color: #5b8063; font-weight: 700; }
+.member-delete-button { padding: 6px 9px; border: 1px solid #efd1d1; border-radius: 6px; background: #fff8f8; color: #a44747; font-size: 9px; font-weight: 600; white-space: nowrap; }
+.member-delete-button:disabled { opacity: .5; cursor: not-allowed; }
 .member-loan-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 12px; }
 .member-loan-card { min-width: 0; padding: 12px; border: 1px solid #f0f2ef; border-radius: 8px; background: #fcfdfb; }
 .member-loan-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
