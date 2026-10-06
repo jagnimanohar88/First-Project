@@ -103,6 +103,7 @@ button { cursor: pointer; }
 .page-heading p { margin: 0; font-size: 12px; }
 .page-heading .button { flex: 0 0 auto; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin-bottom: 18px; }
+.overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .metric-card { min-width: 0; padding: 16px 16px 14px; border: 1px solid #e9ece7; border-radius: 10px; background: #fff; }
 .balance-card { background: #1d4940; border-color: #1d4940; color: white; }
 .metric-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #77817c; font-size: 11px; font-weight: 500; }
