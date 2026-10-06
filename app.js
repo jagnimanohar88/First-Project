@@ -431,6 +431,7 @@ function renderOverview() {
     : "Balances and progress at a glance";
   document.getElementById("metric-grid").classList.toggle("admin-overview-metrics", isAdmin);
   document.getElementById("metric-grid").classList.toggle("member-overview-metrics", !isAdmin);
+  document.getElementById("metric-interest-card").classList.toggle("hidden", !isAdmin);
   document.getElementById("metric-next-card").classList.remove("hidden");
   document.getElementById("metric-balance-label").textContent = isAdmin ? "Outstanding principal" : "Total remaining";
   document.getElementById("metric-balance-foot").textContent = isAdmin ? "Across approved members" : "Across all active loans";
