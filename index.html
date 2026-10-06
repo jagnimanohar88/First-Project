@@ -58,7 +58,7 @@
         <div class="nav-caption">WORKSPACE</div>
         <nav class="main-nav" aria-label="Main navigation">
           <button class="nav-link active" data-view="overview"><span class="nav-icon">▦</span>Overview</button>
-          <button class="nav-link" data-view="loans"><span class="nav-icon">◫</span>My loans</button>
+          <button class="nav-link member-only" data-view="loans"><span class="nav-icon">◫</span>My loans</button>
           <button class="nav-link admin-only hidden" data-view="member-loans"><span class="nav-icon">▤</span>Member loans<span class="nav-count hidden" id="member-loans-count">0</span></button>
           <button class="nav-link admin-only hidden" data-view="payment-requests"><span class="nav-icon">↗</span>Payment requests<span class="nav-count hidden" id="payment-request-count">0</span></button>
           <button class="nav-link" data-view="applications"><span class="nav-icon">▣</span><span id="applications-nav-label">Apply for a loan</span><span class="nav-count hidden admin-only" id="application-count">0</span></button>
@@ -84,7 +84,7 @@
         <div class="main-content">
           <section class="view active" id="view-overview">
             <div class="page-heading">
-              <div><span class="eyebrow" id="today-label">YOUR MONEY, IN FOCUS</span><h1 id="greeting">Good morning</h1><p class="muted">Here’s where things stand with your loans.</p></div>
+              <div><span class="eyebrow" id="today-label">YOUR MONEY, IN FOCUS</span><h1 id="greeting">Good morning</h1><p class="muted" id="overview-intro">Here’s where things stand with your loans.</p></div>
               <button class="button button-dark admin-only hidden" data-action="add-loan"><span class="plus">+</span> Add a loan</button>
             </div>
             <div id="reminder-banner" class="reminder-banner hidden"></div>
@@ -95,7 +95,7 @@
             </div>
             <div class="dashboard-grid">
               <section class="surface loan-overview">
-                <div class="section-heading"><div><h2>Your loans</h2><p>Balances and progress at a glance</p></div><button class="link-button" data-navigate="loans">View all <span>→</span></button></div>
+                <div class="section-heading"><div><h2 id="overview-loans-heading">Your loans</h2><p id="overview-loans-description">Balances and progress at a glance</p></div><button class="link-button member-only" data-navigate="loans">View all <span>→</span></button></div>
                 <div id="overview-loans" class="loan-list"></div>
               </section>
               <section class="surface upcoming-card">

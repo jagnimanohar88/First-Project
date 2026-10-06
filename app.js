@@ -384,8 +384,12 @@ function render() {
 
 function renderReminder() {
   const banner = document.getElementById("reminder-banner");
-  const ownLoans = state.loans.filter((loan) => loan.user_id === state.user.id);
-  const upcoming = ownLoans.map((loan) => ({ loan, status: statusFor(loan) }))
+  const isAdmin = state.profile.role === "admin";
+  const membersById = new Map(state.approvedMembers.map((member) => [member.id, member]));
+  const loans = isAdmin
+    ? state.loans.filter((loan) => membersById.has(loan.user_id))
+    : state.loans.filter((loan) => loan.user_id === state.user.id);
+  const upcoming = loans.map((loan) => ({ loan, status: statusFor(loan) }))
     .filter(({ loan, status }) => loanState(loan).balance > 0 && (status.className === "overdue" || status.className === "due-soon"))
     .sort((a, b) => a.status.dueDate.localeCompare(b.status.dueDate));
   if (!upcoming.length) {
@@ -397,16 +401,29 @@ function renderReminder() {
   banner.classList.toggle("overdue-banner", status.className === "overdue");
   const result = loanState(loan);
   const interestStatus = monthlyInterestStatus(loan, result);
-  banner.innerHTML = `<span>${status.className === "overdue" ? "!" : "◷"}</span><span><strong>${status.className === "overdue" ? "Payment overdue" : "Payment coming up"}:</strong> ${escapeHtml(loan.name)} · ${monthlyDueLabel(loan)} ${fullCurrency.format(nextPaymentAmount(loan, result, interestStatus))} · ${status.className === "overdue" ? `was due ${dateLabel(status.dueDate)}` : `due ${status.days === 0 ? "today" : dateLabel(status.dueDate)}`}</span>`;
+  const memberName = isAdmin ? ` · ${escapeHtml(membersById.get(loan.user_id)?.full_name || "Member")}` : "";
+  banner.innerHTML = `<span>${status.className === "overdue" ? "!" : "◷"}</span><span><strong>${status.className === "overdue" ? "Payment overdue" : "Payment coming up"}:</strong> ${escapeHtml(loan.name)}${memberName} · ${monthlyDueLabel(loan)} ${fullCurrency.format(nextPaymentAmount(loan, result, interestStatus))} · ${status.className === "overdue" ? `was due ${dateLabel(status.dueDate)}` : `due ${status.days === 0 ? "today" : dateLabel(status.dueDate)}`}</span>`;
 }
 
 function renderOverview() {
+  const isAdmin = state.profile.role === "admin";
   const ownLoans = state.loans.filter((loan) => loan.user_id === state.user.id);
+  const membersById = new Map(state.approvedMembers.map((member) => [member.id, member]));
+  const overviewLoans = isAdmin
+    ? state.loans.filter((loan) => membersById.has(loan.user_id) && loanState(loan).balance > 0)
+    : ownLoans;
+  document.getElementById("overview-intro").textContent = isAdmin
+    ? "Monitor approved members’ loan balances and upcoming dues."
+    : "Here’s where things stand with your loans.";
+  document.getElementById("overview-loans-heading").textContent = isAdmin ? "Member loans" : "Your loans";
+  document.getElementById("overview-loans-description").textContent = isAdmin
+    ? "Borrowers, due dates, outstanding balances, and principal progress"
+    : "Balances and progress at a glance";
   const ownPayments = state.payments.filter((payment) => payment.user_id === state.user.id);
-  const balances = ownLoans.map((loan) => loanState(loan));
+  const balances = overviewLoans.map((loan) => loanState(loan));
   const totalBalance = balances.reduce((sum, result) => sum + result.balance, 0);
-  const interest = ownLoans.reduce((sum, loan) => sum + interestDueAmount(loan, loanState(loan)), 0);
-  const next = ownLoans
+  const interest = overviewLoans.reduce((sum, loan) => sum + interestDueAmount(loan, loanState(loan)), 0);
+  const next = overviewLoans
     .filter((loan) => loanState(loan).balance > 0)
     .map((loan) => ({ loan, status: statusFor(loan) }))
     .sort((a, b) => a.status.dueDate.localeCompare(b.status.dueDate))[0];
@@ -419,15 +436,22 @@ function renderOverview() {
     ? `${monthlyDueLabel(next.loan)} · Due ${dateLabel(next.status.dueDate)} · ${next.loan.name}`
     : "No upcoming payments";
 
-  document.getElementById("overview-loans").innerHTML = ownLoans.length ? ownLoans.slice(0, 4).map((loan) => {
+  document.getElementById("overview-loans").innerHTML = overviewLoans.length ? overviewLoans.map((loan) => {
     const result = loanState(loan);
     const progress = paymentProgress(loan);
-    return `<div class="loan-row"><div class="loan-identity">${loanIconMarkup(loan)}<div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div></div><div class="progress-wrap"><div class="progress-label"><span>Principal repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-balance"><strong>${currency.format(result.principal)}</strong><span>principal remaining</span></div></div>`;
-  }).join("") : emptyState("◫", "Your first loan starts here.", state.profile.role === "admin"
-    ? "Add a loan to see balances and repayment progress."
+    const member = membersById.get(loan.user_id);
+    const status = statusFor(loan);
+    const ownerDetails = isAdmin
+      ? `<span>${escapeHtml(member?.full_name || "Member")} · ${escapeHtml(loan.lender)} · Due ${dateLabel(status.dueDate)}</span>`
+      : `<span>${escapeHtml(loan.lender)}</span>`;
+    const balance = isAdmin ? result.balance : result.principal;
+    const balanceLabel = isAdmin ? "total outstanding" : "principal remaining";
+    return `<div class="loan-row"><div class="loan-identity">${loanIconMarkup(loan)}<div><strong>${escapeHtml(loan.name)}</strong>${ownerDetails}</div></div><div class="progress-wrap"><div class="progress-label"><span>Principal repaid</span><strong>${progress}%</strong></div><div class="progress-track"><div class="progress-bar" style="width:${progress}%"></div></div></div><div class="loan-balance"><strong>${currency.format(balance)}</strong><span>${balanceLabel}</span></div></div>`;
+  }).join("") : emptyState("◫", isAdmin ? "No member loans to show." : "Your first loan starts here.", isAdmin
+    ? "Approved members' active loans will appear here."
     : "Apply for a loan to see balances and repayment progress after approval.");
 
-  const upcoming = ownLoans.filter((loan) => loanState(loan).balance > 0)
+  const upcoming = overviewLoans.filter((loan) => loanState(loan).balance > 0)
     .map((loan) => ({ loan, status: statusFor(loan) }))
     .sort((a, b) => a.status.dueDate.localeCompare(b.status.dueDate))
     .slice(0, 3);
@@ -435,10 +459,13 @@ function renderOverview() {
     const due = dayStart(status.dueDate);
     const result = loanState(loan);
     const interestStatus = monthlyInterestStatus(loan, result);
-    return `<div class="upcoming-item"><div class="date-block"><span>${due.toLocaleDateString("en-US", { month: "short" })}</span><strong>${due.getDate()}</strong></div><div class="upcoming-info"><strong>${loanIconMarkup(loan)}<span>${escapeHtml(loan.name)}</span></strong><span class="status-pill ${status.className}">${status.label}</span></div><span class="upcoming-amount">${fullCurrency.format(nextPaymentAmount(loan, result, interestStatus))}</span></div>`;
+    const memberName = isAdmin ? ` · ${escapeHtml(membersById.get(loan.user_id)?.full_name || "Member")}` : "";
+    return `<div class="upcoming-item"><div class="date-block"><span>${due.toLocaleDateString("en-US", { month: "short" })}</span><strong>${due.getDate()}</strong></div><div class="upcoming-info"><strong>${loanIconMarkup(loan)}<span>${escapeHtml(loan.name)}${memberName}</span></strong><span class="status-pill ${status.className}">${status.label}</span></div><span class="upcoming-amount">${fullCurrency.format(nextPaymentAmount(loan, result, interestStatus))}</span></div>`;
   }).join("") : emptyState("◷", "All clear.", "Add a loan to see upcoming due dates.");
 
-  const recent = ownPayments.slice().sort((a, b) => b.payment_date.localeCompare(a.payment_date)).slice(0, 4);
+  const recent = (isAdmin
+    ? state.payments.filter((payment) => membersById.has(payment.user_id))
+    : ownPayments).slice().sort((a, b) => b.payment_date.localeCompare(a.payment_date)).slice(0, 4);
   document.getElementById("recent-payments").innerHTML = paymentTable(recent);
 }
 
@@ -634,6 +661,7 @@ function emptyState(symbol, title, description) {
 }
 
 async function showView(view) {
+  if (view === "loans" && state.profile?.role === "admin") return;
   if (view === "approvals" && state.profile?.role !== "admin") return;
   if (view === "member-loans" && state.profile?.role !== "admin") return;
   if (view === "payment-requests" && state.profile?.role !== "admin") return;
