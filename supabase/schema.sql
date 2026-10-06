@@ -482,6 +482,7 @@ grant select on table public.profiles to authenticated;
 grant select on table public.loans to authenticated;
 grant insert (user_id, name, lender, principal, annual_rate, monthly_payment, start_date, due_date, color)
   on public.loans to authenticated;
+grant delete on table public.loans to authenticated;
 grant update (due_date) on table public.loans to authenticated;
 grant select on table public.payments to authenticated;
 grant insert (user_id, loan_id, amount, payment_date, payment_type, note) on public.payments to authenticated;
@@ -503,6 +504,11 @@ create policy "Approved members read their loans"
 drop policy if exists "Administrators read all member loans" on public.loans;
 create policy "Administrators read all member loans"
   on public.loans for select to authenticated
+  using ((select public.is_admin()));
+
+drop policy if exists "Administrators delete member loans" on public.loans;
+create policy "Administrators delete member loans"
+  on public.loans for delete to authenticated
   using ((select public.is_admin()));
 
 drop policy if exists "Approved members create their loans" on public.loans;

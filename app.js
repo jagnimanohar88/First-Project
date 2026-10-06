@@ -391,10 +391,14 @@ function renderMemberLoans() {
     return;
   }
 
-  const members = state.approvedMembers.map((member) => ({
-    member,
-    loans: state.loans.filter((loan) => loan.user_id === member.id && loanState(loan).balance > 0)
-  }));
+  const members = state.approvedMembers.map((member) => {
+    const memberLoans = state.loans.filter((loan) => loan.user_id === member.id);
+    return {
+      member,
+      memberLoans,
+      loans: memberLoans.filter((loan) => loanState(loan).balance > 0)
+    };
+  });
   const activeCount = members.reduce((count, item) => count + item.loans.length, 0);
   document.getElementById("member-loan-count").textContent =
     `${activeCount} active loan${activeCount === 1 ? "" : "s"} across ${members.length} approved member${members.length === 1 ? "" : "s"}`;
@@ -404,7 +408,7 @@ function renderMemberLoans() {
     return;
   }
 
-  container.innerHTML = members.map(({ member, loans }) => {
+  container.innerHTML = members.map(({ member, memberLoans, loans }) => {
     const loanCards = loans.length ? loans.map((loan) => {
       const result = loanState(loan);
       const payments = state.payments
@@ -419,7 +423,7 @@ function renderMemberLoans() {
       return `<article class="member-loan-card"><div class="member-loan-heading"><div><strong>${escapeHtml(loan.name)}</strong><span>${escapeHtml(loan.lender)}</span></div><span class="status-pill ${status.className}">${status.label}</span></div><div class="member-loan-balance">${fullCurrency.format(result.balance)} <span>remaining</span></div><div class="member-loan-details"><span>Approved amount: ${fullCurrency.format(loan.principal)}</span><span>Principal remaining: ${fullCurrency.format(result.principal)}</span><span>Interest due this month: ${fullCurrency.format(interestDueAmount(loan, result))}</span><span>${monthlyInterestLabel(loan, result.principal)}</span><span>Due ${dateLabel(loan.due_date)}</span>${term}</div><div class="member-loan-payment"><span>Total repayments: <strong>${fullCurrency.format(totalPaid(loan.id))}</strong></span><span>${lastPayment ? `Last paid ${dateLabel(lastPayment.payment_date)} · ${fullCurrency.format(lastPayment.amount)} (interest ${fullCurrency.format(lastPaymentBreakdown?.interest || 0)}, principal ${fullCurrency.format(lastPaymentBreakdown?.principal || 0)})` : "No payments recorded"}</span></div></article>`;
     }).join("") : emptyState("✓", "No active loans.", "This member currently has no loans with an outstanding balance.");
 
-    return `<section class="member-loan-group"><div class="member-group-heading"><div class="avatar">${initials(member.full_name)}</div><div><strong>${escapeHtml(member.full_name)}</strong><span>${escapeHtml(member.email)}</span></div><span class="member-loan-total">${loans.length} active</span></div><div class="member-loan-cards">${loanCards}</div></section>`;
+    return `<section class="member-loan-group"><div class="member-group-heading"><div class="avatar">${initials(member.full_name)}</div><div><strong>${escapeHtml(member.full_name)}</strong><span>${escapeHtml(member.email)}</span></div><span class="member-loan-total">${loans.length} active</span><button type="button" class="member-delete-button" data-action="delete-member-loans" data-id="${escapeHtml(member.id)}" data-member-name="${escapeHtml(member.full_name)}" data-loan-count="${memberLoans.length}" aria-label="Delete all ${memberLoans.length} loans for ${escapeHtml(member.full_name)}" ${memberLoans.length ? "" : "disabled"}>Delete all loans</button></div><div class="member-loan-cards">${loanCards}</div></section>`;
   }).join("");
 }
 
@@ -850,6 +854,30 @@ document.addEventListener("click", async (event) => {
   if (action.dataset.action === "apply-loan") openLoanApplicationModal();
   if (action.dataset.action === "add-payment") openPaymentModal(action.dataset.id || "");
   if (action.dataset.action === "edit-due") openDueDateModal(action.dataset.id);
+  if (action.dataset.action === "delete-member-loans" && state.profile?.role === "admin") {
+    const memberId = action.dataset.id;
+    const memberName = action.dataset.memberName || "this user";
+    const loanCount = Number(action.dataset.loanCount);
+    if (!memberId || !Number.isInteger(loanCount) || loanCount < 1) return;
+    const confirmed = window.confirm(
+      `Delete all ${loanCount} loan${loanCount === 1 ? "" : "s"} for ${memberName}?\n\n` +
+      "This permanently deletes their loan records, recorded payments, and payment requests. This cannot be undone."
+    );
+    if (!confirmed) return;
+    action.disabled = true;
+    try {
+      const { data, error } = await supabase.from("loans").delete().eq("user_id", memberId).select("id");
+      if (error) throw error;
+      await refreshDashboard();
+      const deletedCount = data.length;
+      showToast(`Deleted ${deletedCount} loan${deletedCount === 1 ? "" : "s"} and related payment records.`);
+    } catch (error) {
+      console.error("Could not delete member loans.", error);
+      showToast(`Could not delete loans: ${error.message}`);
+      action.disabled = false;
+    }
+    return;
+  }
   if (["approve-payment-request", "reject-payment-request"].includes(action.dataset.action) && state.profile?.role === "admin") {
     const approve = action.dataset.action === "approve-payment-request";
     action.disabled = true;
