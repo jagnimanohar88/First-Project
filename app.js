@@ -82,6 +82,13 @@ function monthlyInterestStatus(loan, result, asOf = new Date().toISOString().sli
     paidAmount: Math.max(0, Math.round((monthlyAmount - remaining) * 100) / 100)
   };
 }
+function interestReceivedThisMonth(loan, asOf = new Date().toISOString().slice(0, 10)) {
+  const monthStart = `${asOf.slice(0, 7)}-01`;
+  const breakdownByPayment = new Map(loanState(loan, asOf).paymentBreakdown.map((item) => [item.id, item]));
+  return state.payments
+    .filter((payment) => payment.loan_id === loan.id && payment.payment_date >= monthStart && payment.payment_date <= asOf)
+    .reduce((sum, payment) => sum + (breakdownByPayment.get(payment.id)?.interest || 0), 0);
+}
 const monthlyInterestStatusMarkup = (summary) => {
   const label = summary.isPaid
     ? summary.paidAmount > 0 ? "Interest paid this month" : "No interest due this month"
@@ -409,32 +416,52 @@ function renderOverview() {
   const isAdmin = state.profile.role === "admin";
   const ownLoans = state.loans.filter((loan) => loan.user_id === state.user.id);
   const membersById = new Map(state.approvedMembers.map((member) => [member.id, member]));
+  const memberLoans = isAdmin
+    ? state.loans.filter((loan) => membersById.has(loan.user_id))
+    : ownLoans;
   const overviewLoans = isAdmin
-    ? state.loans.filter((loan) => membersById.has(loan.user_id) && loanState(loan).balance > 0)
+    ? memberLoans.filter((loan) => loanState(loan).balance > 0)
     : ownLoans;
   document.getElementById("overview-intro").textContent = isAdmin
-    ? "Monitor approved members’ loan balances and upcoming dues."
+    ? "Monitor approved members’ outstanding principal and monthly interest."
     : "Here’s where things stand with your loans.";
   document.getElementById("overview-loans-heading").textContent = isAdmin ? "Member loans" : "Your loans";
   document.getElementById("overview-loans-description").textContent = isAdmin
     ? "Borrowers, due dates, outstanding balances, and principal progress"
     : "Balances and progress at a glance";
+  document.getElementById("metric-grid").classList.toggle("admin-overview-metrics", isAdmin);
+  document.getElementById("metric-grid").classList.toggle("member-overview-metrics", !isAdmin);
+  document.getElementById("metric-next-card").classList.toggle("hidden", !isAdmin);
+  document.getElementById("metric-balance-label").textContent = isAdmin ? "Outstanding principal" : "Total remaining";
+  document.getElementById("metric-balance-foot").textContent = isAdmin ? "Across approved members" : "Across all active loans";
+  document.getElementById("metric-interest-label").textContent = isAdmin ? "Interest received this month" : "Interest due this month";
+  document.getElementById("metric-interest-foot").textContent = isAdmin ? "From approved member payments" : "Estimated monthly interest";
+  document.getElementById("metric-due-label").textContent = isAdmin ? "Upcoming month interest" : "Next payment";
+  document.getElementById("upcoming-heading").textContent = isAdmin ? "Upcoming member interest" : "Coming up";
+  document.getElementById("upcoming-description").textContent = isAdmin
+    ? "Estimated interest by member and loan"
+    : "Keep your next due date in sight";
   const ownPayments = state.payments.filter((payment) => payment.user_id === state.user.id);
   const balances = overviewLoans.map((loan) => loanState(loan));
-  const totalBalance = balances.reduce((sum, result) => sum + result.balance, 0);
-  const interest = overviewLoans.reduce((sum, loan) => sum + interestDueAmount(loan, loanState(loan)), 0);
+  const totalBalance = balances.reduce((sum, result) => sum + (isAdmin ? result.principal : result.balance), 0);
+  const interest = isAdmin
+    ? memberLoans.reduce((sum, loan) => sum + interestReceivedThisMonth(loan), 0)
+    : ownLoans.reduce((sum, loan) => sum + interestDueAmount(loan, loanState(loan)), 0);
   const next = overviewLoans
     .filter((loan) => loanState(loan).balance > 0)
     .map((loan) => ({ loan, status: statusFor(loan) }))
     .sort((a, b) => a.status.dueDate.localeCompare(b.status.dueDate))[0];
   document.getElementById("metric-balance").textContent = currency.format(totalBalance);
   document.getElementById("metric-interest").textContent = fullCurrency.format(interest);
-  document.getElementById("metric-due").textContent = next
-    ? fullCurrency.format(nextPaymentAmount(next.loan, loanState(next.loan), monthlyInterestStatus(next.loan, loanState(next.loan))))
-    : fullCurrency.format(0);
+  const upcomingInterest = memberLoans
+    .filter((loan) => loanState(loan).principal > 0)
+    .reduce((sum, loan) => sum + monthlyDueAmount(loan, loanState(loan).principal), 0);
+  document.getElementById("metric-due").textContent = isAdmin
+    ? fullCurrency.format(upcomingInterest)
+    : next ? fullCurrency.format(nextPaymentAmount(next.loan, loanState(next.loan), monthlyInterestStatus(next.loan, loanState(next.loan)))) : fullCurrency.format(0);
   document.getElementById("metric-due-date").textContent = next
-    ? `${monthlyDueLabel(next.loan)} · Due ${dateLabel(next.status.dueDate)} · ${next.loan.name}`
-    : "No upcoming payments";
+    ? isAdmin ? "Estimated across all active member loans" : `${monthlyDueLabel(next.loan)} · Due ${dateLabel(next.status.dueDate)} · ${next.loan.name}`
+    : isAdmin ? "No active member loans" : "No upcoming payments";
 
   document.getElementById("overview-loans").innerHTML = overviewLoans.length ? overviewLoans.map((loan) => {
     const result = loanState(loan);
@@ -451,17 +478,24 @@ function renderOverview() {
     ? "Approved members' active loans will appear here."
     : "Apply for a loan to see balances and repayment progress after approval.");
 
-  const upcoming = overviewLoans.filter((loan) => loanState(loan).balance > 0)
+  const upcomingLoans = isAdmin
+    ? memberLoans.filter((loan) => loanState(loan).principal > 0)
+    : overviewLoans.filter((loan) => loanState(loan).balance > 0);
+  const sortedUpcoming = upcomingLoans
     .map((loan) => ({ loan, status: statusFor(loan) }))
-    .sort((a, b) => a.status.dueDate.localeCompare(b.status.dueDate))
-    .slice(0, 3);
+    .sort((a, b) => a.status.dueDate.localeCompare(b.status.dueDate));
+  const upcoming = isAdmin ? sortedUpcoming : sortedUpcoming.slice(0, 3);
   document.getElementById("upcoming-list").innerHTML = upcoming.length ? upcoming.map(({ loan, status }) => {
     const due = dayStart(status.dueDate);
     const result = loanState(loan);
     const interestStatus = monthlyInterestStatus(loan, result);
     const memberName = isAdmin ? ` · ${escapeHtml(membersById.get(loan.user_id)?.full_name || "Member")}` : "";
-    return `<div class="upcoming-item"><div class="date-block"><span>${due.toLocaleDateString("en-US", { month: "short" })}</span><strong>${due.getDate()}</strong></div><div class="upcoming-info"><strong>${loanIconMarkup(loan)}<span>${escapeHtml(loan.name)}${memberName}</span></strong><span class="status-pill ${status.className}">${status.label}</span></div><span class="upcoming-amount">${fullCurrency.format(nextPaymentAmount(loan, result, interestStatus))}</span></div>`;
-  }).join("") : emptyState("◷", "All clear.", "Add a loan to see upcoming due dates.");
+    const amount = isAdmin ? monthlyDueAmount(loan, result.principal) : nextPaymentAmount(loan, result, interestStatus);
+    const statusLabel = isAdmin ? dateLabel(status.dueDate) : status.label;
+    return `<div class="upcoming-item"><div class="date-block"><span>${due.toLocaleDateString("en-US", { month: "short" })}</span><strong>${due.getDate()}</strong></div><div class="upcoming-info"><strong>${loanIconMarkup(loan)}<span>${escapeHtml(loan.name)}${memberName}</span></strong><span class="status-pill ${isAdmin ? "" : status.className}">${statusLabel}</span></div><span class="upcoming-amount">${fullCurrency.format(amount)}</span></div>`;
+  }).join("") : emptyState("◷", isAdmin ? "No upcoming member interest." : "All clear.", isAdmin
+    ? "Active member loan interest estimates will appear here."
+    : "Add a loan to see upcoming due dates.");
 
   const recent = (isAdmin
     ? state.payments.filter((payment) => membersById.has(payment.user_id))

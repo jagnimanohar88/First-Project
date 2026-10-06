@@ -104,6 +104,8 @@ button { cursor: pointer; }
 .page-heading .button { flex: 0 0 auto; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; margin-bottom: 18px; }
 .overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.overview-metrics.member-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.overview-metrics.admin-overview-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .metric-card { min-width: 0; padding: 16px 16px 14px; border: 1px solid #e9ece7; border-radius: 10px; background: #fff; }
 .balance-card { background: #1d4940; border-color: #1d4940; color: white; }
 .metric-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #77817c; font-size: 11px; font-weight: 500; }
@@ -283,6 +285,7 @@ button { cursor: pointer; }
   .page-heading .button { min-height: 38px; gap: 7px; padding: 0 10px; font-size: 10px; }
   .page-heading .button .plus { font-size: 16px; }
   .metric-grid { gap: 9px; }
+  .overview-metrics.admin-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-card { padding: 12px 11px; }
   .metric-card > strong { margin: 12px 0 7px; font-size: 20px; }
   .metric-top { font-size: 10px; }

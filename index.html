@@ -88,10 +88,10 @@
               <button class="button button-dark admin-only hidden" data-action="add-loan"><span class="plus">+</span> Add a loan</button>
             </div>
             <div id="reminder-banner" class="reminder-banner hidden"></div>
-            <div class="metric-grid overview-metrics">
-              <article class="metric-card balance-card"><div class="metric-top"><span>Total remaining</span><span class="metric-icon">↘</span></div><strong id="metric-balance">₹0</strong><div class="metric-foot"><span class="metric-dot"></span>Across all active loans</div></article>
-              <article class="metric-card"><div class="metric-top"><span>Interest due this month</span><span class="metric-icon green-icon">⌁</span></div><strong id="metric-interest">₹0</strong><div class="metric-foot">Estimated monthly interest</div></article>
-              <article class="metric-card due-metric"><div class="metric-top"><span>Next payment</span><span class="metric-icon amber-icon">◷</span></div><strong id="metric-due">₹0</strong><div class="metric-foot" id="metric-due-date">No upcoming payments</div></article>
+            <div class="metric-grid overview-metrics" id="metric-grid">
+              <article class="metric-card balance-card"><div class="metric-top"><span id="metric-balance-label">Total remaining</span><span class="metric-icon">↘</span></div><strong id="metric-balance">₹0</strong><div class="metric-foot"><span class="metric-dot"></span><span id="metric-balance-foot">Across all active loans</span></div></article>
+              <article class="metric-card"><div class="metric-top"><span id="metric-interest-label">Interest due this month</span><span class="metric-icon green-icon">⌁</span></div><strong id="metric-interest">₹0</strong><div class="metric-foot" id="metric-interest-foot">Estimated monthly interest</div></article>
+              <article class="metric-card due-metric" id="metric-next-card"><div class="metric-top"><span id="metric-due-label">Next payment</span><span class="metric-icon amber-icon">◷</span></div><strong id="metric-due">₹0</strong><div class="metric-foot" id="metric-due-date">No upcoming payments</div></article>
             </div>
             <div class="dashboard-grid">
               <section class="surface loan-overview">
@@ -99,11 +99,11 @@
                 <div id="overview-loans" class="loan-list"></div>
               </section>
               <section class="surface upcoming-card">
-                <div class="section-heading"><div><h2>Coming up</h2><p>Keep your next due date in sight</p></div><span class="calendar-icon">▦</span></div>
+                <div class="section-heading"><div><h2 id="upcoming-heading">Coming up</h2><p id="upcoming-description">Keep your next due date in sight</p></div><span class="calendar-icon">▦</span></div>
                 <div id="upcoming-list" class="upcoming-list"></div>
               </section>
             </div>
-            <section class="surface activity-card">
+            <section class="surface activity-card member-only">
               <div class="section-heading"><div><h2>Recent payments</h2><p>Your latest repayment activity</p></div><button class="link-button" data-navigate="payments">Payment history <span>→</span></button></div>
               <div id="recent-payments"></div>
             </section>
