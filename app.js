@@ -659,20 +659,25 @@ function renderApprovals() {
 
 function renderApplications() {
   const container = document.getElementById("loan-applications");
-  if (!state.applications.length) {
-    container.innerHTML = emptyState("▣", "No loan applications yet.", state.profile.role === "admin"
+  const isAdmin = state.profile.role === "admin";
+  const applications = state.applications.filter((application) => {
+    if (isAdmin || application.status !== "approved") return true;
+    const linkedLoan = state.loans.find((loan) => loan.loan_application_id === application.id);
+    return !linkedLoan || loanState(linkedLoan).principal > 0.001;
+  });
+  if (!applications.length) {
+    container.innerHTML = emptyState("▣", isAdmin ? "No loan applications yet." : "No open loan applications.", isAdmin
       ? "Submitted loan requests will appear here."
-      : "Submit an application to request a loan.");
+      : "Paid-off loans are removed from this list. Submit an application to request another loan.");
     return;
   }
-  const applications = state.applications.slice().sort((a, b) => {
+  const sortedApplications = applications.slice().sort((a, b) => {
     if (a.status === "pending" && b.status !== "pending") return -1;
     if (a.status !== "pending" && b.status === "pending") return 1;
     return b.created_at.localeCompare(a.created_at);
   });
-  container.innerHTML = applications.map((application) => {
+  container.innerHTML = sortedApplications.map((application) => {
     const profile = application.profiles;
-    const isAdmin = state.profile.role === "admin";
     const statusLabel = application.status[0].toUpperCase() + application.status.slice(1);
     const requestedTerm = Number.isInteger(Number(application.term_months)) && Number(application.term_months) > 0
       ? `${application.term_months} month${Number(application.term_months) === 1 ? "" : "s"} requested`
