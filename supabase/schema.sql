@@ -69,7 +69,7 @@ create table if not exists public.loan_applications (
   name text not null check (char_length(name) between 1 and 55),
   lender text not null check (char_length(lender) between 1 and 55),
   requested_amount numeric(14, 2) not null check (requested_amount > 0),
-  term_months integer not null check (term_months between 1 and 600),
+  term_months integer check (term_months between 1 and 600),
   approved_amount numeric(14, 2) check (approved_amount > 0),
   annual_rate numeric(5, 2) check (annual_rate between 0 and 100),
   monthly_interest_rate numeric(5, 2) check (monthly_interest_rate between 0 and 100),
@@ -112,6 +112,7 @@ alter table public.payments add constraint payments_payment_type_check
   check (payment_type in ('interest_only', 'regular'));
 
 alter table public.loan_applications add column if not exists term_months integer;
+alter table public.loan_applications alter column term_months drop not null;
 alter table public.loan_applications add column if not exists approved_amount numeric(14, 2);
 alter table public.loan_applications add column if not exists monthly_interest_rate numeric(5, 2);
 alter table public.loan_applications add column if not exists monthly_interest_amount numeric(14, 2);
@@ -488,7 +489,7 @@ grant select on table public.payments to authenticated;
 grant insert (user_id, loan_id, amount, payment_date, payment_type, note) on public.payments to authenticated;
 grant select, insert on table public.payment_requests to authenticated;
 grant select on table public.loan_applications to authenticated;
-grant insert (name, lender, requested_amount, term_months)
+grant insert (name, lender, requested_amount)
   on public.loan_applications to authenticated;
 
 drop policy if exists "Read own profile or profiles as an admin" on public.profiles;
@@ -575,6 +576,6 @@ create policy "Approved members submit loan applications"
     and status = 'pending'
     and reviewed_by is null
     and reviewed_at is null
-    and term_months between 1 and 600
+    and (term_months is null or term_months between 1 and 600)
     and (select public.is_approved())
   );
