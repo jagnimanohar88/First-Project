@@ -284,8 +284,12 @@ function statusFor(loan) {
   const today = new Date().toISOString().slice(0, 10);
   const days = daysBetween(today, loan.due_date);
   const isOverdue = dayStart(loan.due_date) < dayStart(today);
-  if (isOverdue && loanState(loan).balance > 0) return { label: "Overdue", className: "overdue", days: 0 };
-  if (days <= 7 && loanState(loan).balance > 0) return { label: days === 0 ? "Due today" : `Due in ${days} day${days === 1 ? "" : "s"}`, className: "due-soon", days };
+  const result = loanState(loan);
+  if (loan.due_date === today && result.balance > 0 && monthlyInterestStatus(loan, result).isPaid) {
+    return { label: "Paid", className: "", days: 0 };
+  }
+  if (isOverdue && result.balance > 0) return { label: "Overdue", className: "overdue", days: 0 };
+  if (days <= 7 && result.balance > 0) return { label: days === 0 ? "Due today" : `Due in ${days} day${days === 1 ? "" : "s"}`, className: "due-soon", days };
   return { label: "On track", className: "", days };
 }
 
